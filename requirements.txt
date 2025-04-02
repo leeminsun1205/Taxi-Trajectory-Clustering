@@ -4,3 +4,4 @@ scikit-learn
 tslearn
 folium
 streamlit_folium
+plotly
