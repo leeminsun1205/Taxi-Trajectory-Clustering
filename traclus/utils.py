@@ -12,121 +12,60 @@ import similaritymeasures
 from streamlit_folium import folium_static
 from sklearn.metrics import silhouette_score
 from math import radians, cos, sin, asin, sqrt
-from datetime import datetime, time, timedelta
 
 EARTH_RADIUS_KM = 6371.0
 
 # --- Data Loading & Initial Cleaning ---
 
-# @st.cache_data # Caching initial load might be okay, but requires careful keying if file content changes
+# @st.cache_data 
 def upload_data(uploaded_file_content):
-    """
-    Loads CSV data, handles specific formats like leading unnamed columns,
-    maps common column names, converts types, and performs basic validation.
-    """
     try:
         df = pd.read_csv(uploaded_file_content)
     except Exception as e:
         st.error(f"Error reading CSV: {e}")
         return None
 
-    # --- Format Handling ---
-    # 1. Handle leading unnamed index column (common in pandas to_csv)
     if df.columns[0].startswith("Unnamed"):
         df = df.drop(columns=df.columns[0])
-        st.write("Detected and removed leading unnamed index column.")
 
-    # 2. Flexible Column Mapping (lowercase for robustness)
+    df.columns = df.columns.str.strip()
     column_mapping = {
-        # DateTime variations
-        "timestamp": "DateTime", "date and time": "DateTime", "datetime": "DateTime",
-        # TaxiID variations
-        "taxiid": "TaxiID", "driveid": "TaxiID", "vehicleid": "TaxiID", "driverno": "TaxiID", "driveno": "TaxiID",
-        # Longitude variations
-        "longitude": "Longitude", "lon": "Longitude",
-        # Latitude variations
-        "latitude": "Latitude", "lat": "Latitude",
+        "TimeStamp": "DateTime", 
+        "Date and Time": "DateTime",
+        "DriveNo": "TaxiID"
     }
-    original_columns = df.columns.tolist()
-    df.columns = df.columns.str.lower().map(lambda x: column_mapping.get(x, x.lower())) # Keep original name if no map
-    mapped_columns = df.columns.tolist()
-    if original_columns != mapped_columns:
-         st.write(f"Column names mapped (showing final names): {mapped_columns}")
+    df.rename(columns=column_mapping, inplace=True)
 
-    # 3. Check for Required Columns AFTER mapping
-    required_cols = ["DateTime", "TaxiID", "Latitude", "Longitude"]
-    missing_cols = [col for col in required_cols if col not in df.columns]
-    if missing_cols:
-        st.error(f"Missing required columns after mapping: {', '.join(missing_cols)}. Cannot proceed.")
-        return None
-
-    # --- Type Conversion & Cleaning ---
-    initial_rows = len(df)
     df["DateTime"] = pd.to_datetime(df["DateTime"], errors='coerce')
-    df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
-    df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
-    df['TaxiID'] = pd.to_numeric(df['TaxiID'], errors='coerce').fillna(-1).astype(int)
+    df["Longitude"] = pd.to_numeric(df["Longitude"], errors='coerce')
+    df["Latitude"] = pd.to_numeric(df["Latitude"], errors='coerce')
+    df["TaxiID"] = pd.to_numeric(df["TaxiID"], errors='coerce').fillna(-1).astype(int)
 
-    # Handle Timezones (Convert to UTC if present)
     if pd.api.types.is_datetime64_any_dtype(df["DateTime"]):
-        if df["DateTime"].dt.tz is not None:
-            df["DateTime"] = df["DateTime"].dt.tz_convert('UTC')
-            # st.info("Timezone detected and converted to UTC.") # Reduce messages
-        # else: st.info("No timezone info found.")
-    else: st.warning("Could not parse DateTime column.")
+        df["DateTime"] = df["DateTime"].dt.tz_localize(None, ambiguous='NaT', nonexistent='NaT')
+    else:
+        st.warning("Could not parse DateTime column.")
 
-    # Drop rows with conversion errors or invalid TaxiID
-    df = df.dropna(subset=["DateTime", "Latitude", "Longitude"])
-    df = df[df['TaxiID'] != -1]
-    rows_after_na = len(df)
-    if rows_after_na < initial_rows:
-         st.write(f"Removed {initial_rows - rows_after_na} rows with missing/invalid critical data.")
-
-    # --- Validation ---
-    if df.empty:
-        st.warning("No valid data remaining after cleaning.")
-        return None
-
-    # Optional: Check Lat/Lon ranges (can add warnings if needed)
-    # lat_invalid = df[(df['Latitude'] < -90) | (df['Latitude'] > 90)]
-    # lon_invalid = df[(df['Longitude'] < -180) | (df['Longitude'] > 180)]
-    # if not lat_invalid.empty or not lon_invalid.empty:
-    #     st.warning("Some Lat/Lon values are outside standard ranges.")
-
-    st.success(f"Loaded {len(df)} valid data points.")
+    st.success(f"Loaded {len(df)} data points.")
     return df
 
-
 # --- Filtering Functions (Not Cached - Rerun on filter changes) ---
-
-def filter_data_by_date(df, selected_dates):
+# @st.cache_data
+def filter_data_by_date(df, selected_dates, len_sad):
     """Filters DataFrame by selected list of dates."""
-    if df is None or df.empty: return pd.DataFrame()
-    if not selected_dates: return df.copy()
-    if "DateTime" not in df.columns or not pd.api.types.is_datetime64_any_dtype(df["DateTime"]):
-        return df.copy() # Skip if column invalid
+    if len(selected_dates) == len_sad: 
+        return df.copy() 
     dates_to_filter = [pd.Timestamp(d).date() for d in selected_dates]
     return df[df['DateTime'].dt.date.isin(dates_to_filter)].copy()
 
-def filter_data_by_time_mode(df, mode="All Day (0-24)", custom_hour_range=(0, 24)):
+# @st.cache_data
+def filter_data_by_hours(df, custom_hour_range=(0, 24)):
     """Filters DataFrame by time of day."""
-    if df is None or df.empty: return pd.DataFrame()
-    if "DateTime" not in df.columns or not pd.api.types.is_datetime64_any_dtype(df["DateTime"]):
-        return df.copy() # Skip if column invalid
-
     dt = df['DateTime'].dt
-    if mode == "Daytime (6-18)":
-        return df[(dt.hour >= 6) & (dt.hour < 18)].copy()
-    elif mode == "Nighttime (<6 | >=18)":
-        return df[(dt.hour < 6) | (dt.hour >= 18)].copy()
-    elif mode == "Custom Range...":
-        start, end = custom_hour_range
-        if start == 0 and end == 24: return df.copy() # No filter needed
-        if end == 24: return df[dt.hour >= start].copy() # Handle end=24
-        return df[(dt.hour >= start) & (dt.hour < end)].copy()
-    else: # All Day
-        return df.copy()
-
+    start, end = custom_hour_range
+    if start == 0 and end == 24: return df.copy() # No filter needed
+    if end == 24: return df[dt.hour >= start].copy() 
+    return df[(dt.hour >= start) & (dt.hour < end)].copy()
 
 # --- Feature Calculation & Anomaly Filtering (Cached) ---
 
@@ -140,15 +79,11 @@ def haversine(lon1, lat1, lon2, lat2):
     c = 2 * asin(sqrt(a))
     return c * EARTH_RADIUS_KM * 1000
 
-@st.cache_data
+# @st.cache_data
 def calculate_trajectory_features(_df):
     """Adds TimeDiff_s, DistJump_m, Speed_kmh to the DataFrame."""
-    if _df is None or _df.empty: return pd.DataFrame()
-    if not all(col in _df.columns for col in ["TaxiID", "DateTime", "Latitude", "Longitude"]):
-        st.error("Cannot calculate features: Missing required columns.")
-        return _df.copy() # Return original if columns missing
-
     df = _df.sort_values(['TaxiID', 'DateTime']).copy()
+    
     gb = df.groupby('TaxiID')
     df['TimeDiff_s'] = gb['DateTime'].diff().dt.total_seconds()
     df['PrevLat'] = gb['Latitude'].shift(1)
@@ -156,7 +91,6 @@ def calculate_trajectory_features(_df):
 
     valid_prev = df['PrevLat'].notna()
     df['DistJump_m'] = np.nan
-    # Apply haversine only on valid rows (avoids errors, slightly slower than full vectorization if possible)
     df.loc[valid_prev, 'DistJump_m'] = df[valid_prev].apply(
         lambda r: haversine(r['PrevLon'], r['PrevLat'], r['Longitude'], r['Latitude']), axis=1)
 
@@ -166,41 +100,33 @@ def calculate_trajectory_features(_df):
 
     return df.drop(columns=['PrevLat', 'PrevLon'])
 
-@st.cache_data
-def filter_invalid_moves(_df_with_features, max_speed_kmh=150, max_dist_jump_m=5000):
+# @st.cache_data
+def filter_invalid_moves(_df_with_features, max_speed_kmh=150):
     """Filters points based on speed and distance jump thresholds."""
-    if _df_with_features is None or _df_with_features.empty: return pd.DataFrame()
-    if 'Speed_kmh' not in _df_with_features.columns or 'DistJump_m' not in _df_with_features.columns:
+    if 'Speed_kmh' not in _df_with_features.columns:
         st.warning("Features missing, cannot filter invalid moves.")
         return _df_with_features.copy()
 
     invalid = (
-        (_df_with_features['Speed_kmh'] > max_speed_kmh) |
-        (_df_with_features['DistJump_m'] > max_dist_jump_m)
-    ).fillna(False) # Treat NaN as valid (not invalid)
+        (_df_with_features['Speed_kmh'] > max_speed_kmh) 
+    ).fillna(False) 
 
     valid_df = _df_with_features[~invalid].copy()
     num_removed = len(_df_with_features) - len(valid_df)
     if num_removed > 0: st.write(f"Filtered {num_removed} points by speed/distance.")
     return valid_df
 
-
 # --- Data Preprocessing for Clustering (Cached) ---
 
-@st.cache_data
+# @st.cache_data
 def preprocess_data(_filtered_df):
     """
     Filters trajectories to have >= 2 points, sorts, and extracts
     data into list of numpy arrays and a corresponding processed DataFrame.
     """
-    if _filtered_df is None or _filtered_df.empty: return [], pd.DataFrame(), []
-    required = ["DateTime", "TaxiID", "Latitude", "Longitude"]
-    if not all(col in _filtered_df.columns for col in required): return [], pd.DataFrame(), []
-
     # Filter groups (trajectories) with at least 2 points
     grouped = _filtered_df.groupby('TaxiID')
     processed_df = grouped.filter(lambda x: len(x) >= 2)
-    if processed_df.empty: return [], pd.DataFrame(), []
 
     # Sort within groups and reset index
     processed_df = processed_df.groupby('TaxiID', group_keys=False)\
@@ -211,7 +137,6 @@ def preprocess_data(_filtered_df):
     traj_data = processed_df.groupby('TaxiID')[['Latitude', 'Longitude']]\
                             .apply(lambda x: x.values).tolist()
     traj_ids = processed_df['TaxiID'].unique().tolist() # Order matches traj_data
-
     return traj_data, processed_df, traj_ids
 
 
@@ -267,8 +192,7 @@ def calculate_distance_matrix(_trajectory_data, metric='dtw'):
 
 
 # --- Stop Detection (Cached) ---
-@st.cache_data
-def detect_stops(_df_single_taxi, speed_thresh_kmh=3.0, min_duration_s=120):
+def detect_stops(_df_single_taxi, speed_thresh_kmh=3.0, min_duration_s=300):
     """Identifies stops in a single taxi's trajectory (requires features)."""
     if _df_single_taxi is None or _df_single_taxi.empty: return pd.DataFrame()
     if 'Speed_kmh' not in _df_single_taxi.columns or 'TimeDiff_s' not in _df_single_taxi.columns:
@@ -301,7 +225,6 @@ def detect_stops(_df_single_taxi, speed_thresh_kmh=3.0, min_duration_s=120):
         df.loc[df.index[start_idx], 'IsStop'] = True
 
     return df
-
 
 # --- Clustering Analysis Helpers ---
 
@@ -340,7 +263,7 @@ def calculate_silhouette(dist_matrix, labels):
             except ValueError: return None # Handle cases like all points in one cluster
     return None # Default return if conditions not met
 
-@st.cache_data
+# @st.cache_data
 def calculate_cluster_summary(_processed_df_labeled, _traj_data, _traj_ids, _labels):
     """Generates summary statistics for each valid cluster."""
     summary = []
@@ -393,6 +316,7 @@ def calculate_cluster_summary(_processed_df_labeled, _traj_data, _traj_ids, _lab
 
 def display_stats(raw_len, processed_df, traj_data):
     """Displays key data statistics."""
+    st.write(processed_df)
     n_traj = len(traj_data) if traj_data else 0
     n_proc_pts = len(processed_df) if processed_df is not None else 0
     c1, c2, c3 = st.columns(3)
@@ -408,27 +332,69 @@ def display_stats(raw_len, processed_df, traj_data):
              fmt = '%Y-%m-%d %H:%M'
              st.write(f"**Time Range:** {t_min.strftime(fmt)} to {t_max.strftime(fmt)}")
 
-def visualize_1(df_features): # Folium Map
-    """Folium map showing individual trajectories."""
-    st.subheader("Trajectories (Folium)")
-    if df_features is None or df_features.empty: st.info("No data for Folium map."); return
-    try: center = [df_features['Latitude'].mean(), df_features['Longitude'].mean()]
-    except: center = [39.9, 116.4]
-    m = folium.Map(location=center, zoom_start=11, tiles="cartodbpositron")
-    ids = df_features['TaxiID'].unique()
-    cmap = plt.cm.get_cmap('tab20', len(ids))
-    colors = [matplotlib.colors.rgb2hex(cmap(i)) for i in range(len(ids))]
-    id_colors = {tid: colors[i % len(colors)] for i, tid in enumerate(ids)}
+# def visualize_1(df_features): # Folium Map
+#     """Folium map showing individual trajectories."""
+#     st.subheader("Trajectories (Folium)")
+#     if df_features is None or df_features.empty: st.info("No data for Folium map."); return
+#     try: center = [df_features['Latitude'].mean(), df_features['Longitude'].mean()]
+#     except: center = [39.9, 116.4]
+#     m = folium.Map(location=center, zoom_start=11, tiles="cartodbpositron")
+#     ids = df_features['TaxiID'].unique()
+#     cmap = plt.cm.get_cmap('tab20', len(ids))
+#     colors = [matplotlib.colors.rgb2hex(cmap(i)) for i in range(len(ids))]
+#     id_colors = {tid: colors[i % len(colors)] for i, tid in enumerate(ids)}
 
-    for tid, group in df_features.groupby('TaxiID'):
+#     for tid, group in df_features.groupby('TaxiID'):
+#         g_sort = group.sort_values("DateTime")
+#         if len(g_sort) >= 2:
+#             route = list(zip(g_sort["Latitude"], g_sort["Longitude"]))
+#             popup = f"ID: {tid}<br>Pts: {len(route)}"
+#             if 'Speed_kmh' in g_sort:
+#                  avg_spd = g_sort['Speed_kmh'].mean()
+#                  if pd.notna(avg_spd): popup += f"<br>Avg Spd: {avg_spd:.1f} km/h"
+#             folium.PolyLine(route, color=id_colors.get(tid,'gray'), weight=2, opacity=0.7, popup=popup).add_to(m)
+#     folium_static(m, height=600)
+def visualize_1(df_features):
+    """Folium map showing selected trajectories with optional Beijing border."""
+    st.subheader("Trajectories (Folium)")
+
+    if df_features is None or df_features.empty:
+        st.info("No data for Folium map.")
+        return
+
+    all_ids = df_features['TaxiID'].unique()
+    selected_ids = st.multiselect("Select Taxi IDs to display:", all_ids, default=list(all_ids))
+
+    if not selected_ids:
+        st.warning("Please select at least one Taxi ID to display.")
+        return
+
+    filtered_df = df_features[df_features['TaxiID'].isin(selected_ids)]
+
+    try:
+        center = [filtered_df['Latitude'].mean(), filtered_df['Longitude'].mean()]
+    except:
+        center = [39.9, 116.4]
+
+    m = folium.Map(location=center, zoom_start=11, tiles="cartodbpositron")
+
+    cmap = plt.cm.get_cmap('tab20', len(all_ids))
+    colors = [matplotlib.colors.rgb2hex(cmap(i)) for i in range(len(all_ids))]
+    id_colors = {tid: colors[i % len(colors)] for i, tid in enumerate(all_ids)}
+
+    for tid, group in filtered_df.groupby('TaxiID'):
         g_sort = group.sort_values("DateTime")
         if len(g_sort) >= 2:
             route = list(zip(g_sort["Latitude"], g_sort["Longitude"]))
             popup = f"ID: {tid}<br>Pts: {len(route)}"
             if 'Speed_kmh' in g_sort:
-                 avg_spd = g_sort['Speed_kmh'].mean()
-                 if pd.notna(avg_spd): popup += f"<br>Avg Spd: {avg_spd:.1f} km/h"
-            folium.PolyLine(route, color=id_colors.get(tid,'gray'), weight=2, opacity=0.7, popup=popup).add_to(m)
+                avg_spd = g_sort['Speed_kmh'].mean()
+                if pd.notna(avg_spd):
+                    popup += f"<br>Avg Spd: {avg_spd:.1f} km/h"
+            folium.PolyLine(route, color=id_colors.get(tid, 'gray'),
+                            weight=2, opacity=0.7, popup=popup).add_to(m)
+
+    folium.LayerControl().add_to(m)
     folium_static(m, height=600)
 
 def visualize_2(processed_df): # Plotly Map
@@ -512,115 +478,197 @@ def plot_cluster_sizes(labels):
         st.plotly_chart(fig, use_container_width=True)
 
 def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, speed_multiplier=1.0):
-    """Enhanced Plotly animation for a single taxi with speed control and info display."""
     if df_single_taxi_with_stops is None or df_single_taxi_with_stops.empty:
         st.warning("No data for selected taxi animation.")
-        return None # Return None if no data
+        return None
     required = ['DateTime', 'Latitude', 'Longitude', 'TaxiID', 'IsStop', 'Speed_kmh']
     if not all(col in df_single_taxi_with_stops.columns for col in required):
-        st.error("Animation failed: Missing required columns."); return None
+        st.error("Animation failed: Missing required columns.")
+        return None
 
     df_anim = df_single_taxi_with_stops.copy()
     df_anim['DateTime'] = pd.to_datetime(df_anim['DateTime'], errors='coerce')
-    df_anim = df_anim.dropna(subset=['DateTime', 'Latitude', 'Longitude']).sort_values('DateTime').reset_index(drop=True)
+    df_anim = df_anim.dropna(subset=['DateTime', 'Latitude', 'Longitude']) \
+                     .sort_values('DateTime') \
+                     .reset_index(drop=True)
+    if len(df_anim) < 2:
+        st.warning("Need >= 2 points for animation.")
+        return None
 
-    if len(df_anim) < 2: st.warning("Need >= 2 points for animation."); return None
-
-    taxi_id = df_anim['TaxiID'].iloc[0]
-    # Subheader bây giờ sẽ được đặt trong app.py để tránh in nhiều lần khi rerun
-    # st.subheader(f"Animation for TaxiID: {taxi_id}")
-    df_anim['Frame'] = df_anim.index
     df_anim['Speed_kmh_display'] = df_anim['Speed_kmh'].fillna(0.0)
 
     lat_min, lat_max = df_anim['Latitude'].min(), df_anim['Latitude'].max()
     lon_min, lon_max = df_anim['Longitude'].min(), df_anim['Longitude'].max()
     lat_pad = (lat_max - lat_min) * 0.1 or 0.02
     lon_pad = (lon_max - lon_min) * 0.1 or 0.02
-    bounds = {"west": lon_min-lon_pad, "east": lon_max+lon_pad, "south": lat_min-lat_pad, "north": lat_max+lat_pad}
-    center = dict(lat=(lat_min+lat_max)/2, lon=(lon_min+lon_max)/2)
-    base_frame_duration_ms = 150
-    # Điều chỉnh frame_duration để tốc độ trực quan hơn
-    # Tốc độ 1x -> duration base, 2x -> duration / 2, 0.5x -> duration * 2
-    frame_duration = max(20, int(base_frame_duration_ms / speed_multiplier))
-    # Giảm transition để chuyển động tức thời hơn
-    transition_duration = 0 # max(10, int(frame_duration * 0.2)) # Set to 0 for immediate jumps
+    bounds = {"west": lon_min - lon_pad, "east": lon_max + lon_pad,
+              "south": lat_min - lat_pad, "north": lat_max + lat_pad}
+    center = dict(lat=(lat_min + lat_max) / 2, lon=(lon_min + lon_max) / 2)
 
-    # --- Create Plot ---
-    # Tạo figure mới mỗi lần gọi hàm để đảm bảo không dùng lại state cũ
+    base_frame_duration_ms = 150
+    frame_duration = max(20, int(base_frame_duration_ms / speed_multiplier))
+    transition_duration = 0
+
     fig = go.Figure()
 
-    # Trace 0: Static Full Path Line (RED)
-    fig.add_trace(go.Scattermapbox(lat=df_anim["Latitude"], lon=df_anim["Longitude"], mode='lines', line=dict(width=2, color='rgba(255, 0, 0, 0.7)'), hoverinfo='none', name="Full Path"))
-    # Trace 1: Static Markers for Stops
+    # Trace 0: Dynamic trajectory (partial path) – sẽ được cập nhật qua từng frame
+    fig.add_trace(go.Scattermapbox(
+        lat=[df_anim["Latitude"].iloc[0]],
+        lon=[df_anim["Longitude"].iloc[0]],
+        mode='lines+markers',
+        line=dict(width=2, color='rgba(255, 0, 0, 0.7)'),
+        marker=dict(size=4, color='rgba(255, 0, 0, 0.7)'),
+        name="Trajectory"
+    ))
+    # Trace 1: Markers for stops (static)
     stops_df = df_anim[df_anim['IsStop']]
-    fig.add_trace(go.Scattermapbox(lat=stops_df["Latitude"], lon=stops_df["Longitude"], mode='markers', marker=dict(size=8, color='purple', symbol='circle'), name='Detected Stops', hoverinfo='text', text=[f"Stop @ {dt.strftime('%H:%M:%S')}" for dt in stops_df['DateTime']]))
-    # Trace 2: Start Marker
-    fig.add_trace(go.Scattermapbox(lat=[df_anim["Latitude"].iloc[0]], lon=[df_anim["Longitude"].iloc[0]], mode='markers', marker=dict(size=14, color='green', symbol='circle-dot'), name='Start', hoverinfo='text', text=f"Start: {df_anim['DateTime'].iloc[0].strftime('%H:%M:%S')}"))
-    # Trace 3: End Marker
-    fig.add_trace(go.Scattermapbox(lat=[df_anim["Latitude"].iloc[-1]], lon=[df_anim["Longitude"].iloc[-1]], mode='markers', marker=dict(size=14, color='black', symbol='x-dot'), name='End', hoverinfo='text', text=f"End: {df_anim['DateTime'].iloc[-1].strftime('%H:%M:%S')}"))
-    # Trace 4: THE MOVING MARKER (Initially at start)
-    fig.add_trace(go.Scattermapbox(lat=[df_anim["Latitude"].iloc[0]], lon=[df_anim["Longitude"].iloc[0]], mode='markers', marker=dict(size=16, color='blue', symbol='arrow', allowoverlap=True), name='Current Position', customdata=df_anim[['DateTime', 'Speed_kmh_display']].iloc[[0]], hovertemplate="<b>Current:</b><br>Time: %{customdata[0]|%Y-%m-%d %H:%M:%S}<br>Speed: %{customdata[1]:.1f} km/h<extra></extra>"))
+    fig.add_trace(go.Scattermapbox(
+        lat=stops_df["Latitude"],
+        lon=stops_df["Longitude"],
+        mode='markers',
+        marker=dict(size=8, color='purple', symbol='circle'),
+        name='Detected Stops',
+        hoverinfo='text',
+        text=[f"Stop @ {dt.strftime('%H:%M:%S')}" for dt in stops_df['DateTime']]
+    ))
+    # Trace 2: Start marker (static)
+    fig.add_trace(go.Scattermapbox(
+        lat=[df_anim["Latitude"].iloc[0]],
+        lon=[df_anim["Longitude"].iloc[0]],
+        mode='markers',
+        marker=dict(size=14, color='green', symbol='circle'),
+        name='Start',
+        hoverinfo='text',
+        text=f"Start: {df_anim['DateTime'].iloc[0].strftime('%H:%M:%S')}"
+    ))
+    # Trace 3: End marker (static)
+    fig.add_trace(go.Scattermapbox(
+        lat=[df_anim["Latitude"].iloc[-1]],
+        lon=[df_anim["Longitude"].iloc[-1]],
+        mode='markers',
+        marker=dict(size=14, color='black', symbol='x'),
+        name='End',
+        hoverinfo='text',
+        text=f"End: {df_anim['DateTime'].iloc[-1].strftime('%H:%M:%S')}"
+    ))
+    # Trace 4: Moving marker (dynamic)
+    fig.add_trace(go.Scattermapbox(
+        lat=[df_anim["Latitude"].iloc[0]],
+        lon=[df_anim["Longitude"].iloc[0]],
+        mode='markers',
+        marker=dict(size=16, color='blue', symbol='arrow', allowoverlap=True),
+        name='Current Position',
+        customdata=df_anim[['DateTime', 'Speed_kmh_display']].iloc[[0]],
+        hovertemplate="<b>Current:</b><br>Time: %{customdata[0]|%Y-%m-%d %H:%M:%S}<br>Speed: %{customdata[1]:.1f} km/h<extra></extra>"
+    ))
 
-    # --- Create Frames ---
     frames = []
     for k in range(len(df_anim)):
-        point_data = df_anim.iloc[k]
-        dt_str = point_data['DateTime'].strftime('%Y-%m-%d %H:%M:%S')
-        speed_str = f"{point_data['Speed_kmh_display']:.1f}"
-        info_text = f"Time: {dt_str}<br>Speed: {speed_str} km/h"
-
-        # Dữ liệu cho trace 4 trong frame này
-        frame_trace_data = go.Scattermapbox(
-            lat=[point_data["Latitude"]], lon=[point_data["Longitude"]],
-            mode='markers', marker=dict(size=16, color='blue', symbol='arrow', allowoverlap=True),
+        # Partial trajectory from start to current frame index k
+        dynamic_path = go.Scattermapbox(
+            lat=df_anim["Latitude"].iloc[:k+1].tolist(),
+            lon=df_anim["Longitude"].iloc[:k+1].tolist(),
+            mode='lines+markers',
+            line=dict(width=2, color='rgba(255, 0, 0, 0.7)'),
+            marker=dict(size=4, color='rgba(255, 0, 0, 0.7)'),
+            name="Trajectory"
+        )
+        # Moving marker at current point
+        row = df_anim.iloc[k]
+        moving_marker = go.Scattermapbox(
+            lat=[row["Latitude"]],
+            lon=[row["Longitude"]],
+            mode='markers',
+            marker=dict(size=16, color='blue', symbol='arrow', allowoverlap=True),
             name='Current Position',
-            customdata=[[point_data['DateTime'], point_data['Speed_kmh_display']]],
+            customdata=[[row['DateTime'], row['Speed_kmh_display']]],
             hovertemplate="<b>Current:</b><br>Time: %{customdata[0]|%Y-%m-%d %H:%M:%S}<br>Speed: %{customdata[1]:.1f} km/h<extra></extra>"
         )
-
+        info_text = f"Time: {row['DateTime'].strftime('%Y-%m-%d %H:%M:%S')}<br>Speed: {row['Speed_kmh_display']:.1f} km/h"
         frames.append(go.Frame(
             name=str(k),
-            data=[frame_trace_data], # Chỉ chứa data cho trace cần update
-            traces=[4],            # Chỉ định index của trace cần update (moving marker)
-            layout=go.Layout(      # Layout chỉ chứa phần cần update (annotation)
-                 annotations=[dict(
-                    text=info_text, align='left', showarrow=False, xref='paper', yref='paper',
-                    x=0.02, y=0.98, bgcolor='rgba(255,255,255,0.7)', borderpad=4
+            data=[dynamic_path, moving_marker],
+            traces=[0, 4],
+            layout=go.Layout(
+                annotations=[dict(
+                    text=info_text,
+                    align='left',
+                    showarrow=False,
+                    xref='paper',
+                    yref='paper',
+                    x=0.02,
+                    y=0.98,
+                    bgcolor='rgba(255,255,255,0.7)',
+                    borderpad=4
                 )]
             )
         ))
-    # Gán frames sau khi tạo xong figure ban đầu
     fig.frames = frames
 
-    # --- Configure Layout & Animation Controls ---
-    initial_point = df_anim.iloc[0]
-    initial_dt_str = initial_point['DateTime'].strftime('%Y-%m-%d %H:%M:%S')
-    initial_speed_str = f"{initial_point['Speed_kmh_display']:.1f}"
-    initial_info_text = f"Time: {initial_dt_str}<br>Speed: {initial_speed_str} km/h"
-
     fig.update_layout(
-        # title=f"Movement Simulation for Taxi {taxi_id}", # Tiêu đề đặt ở app.py
-        height=700, mapbox_style="carto-positron",
-        mapbox_bounds=bounds, mapbox_center=center, mapbox_zoom=12, margin=dict(r=5, t=10, l=5, b=5), # Giảm margin top
-        showlegend=True, legend=dict(yanchor="bottom", y=0.01, xanchor="left", x=0.01, bgcolor='rgba(255,255,255,0.7)'),
-        annotations=[dict(text=initial_info_text, name="info_annotation", align='left', showarrow=False, xref='paper', yref='paper', x=0.02, y=0.98, bgcolor='rgba(255,255,255,0.7)', borderpad=4)],
-        # Sử dụng 'immediate' mode và transition duration = 0 để nhảy điểm tức thời
+        height=700,
+        mapbox_style="carto-positron",
+        mapbox_bounds=bounds,
+        mapbox_center=center,
+        mapbox_zoom=12,
+        margin=dict(r=5, t=10, l=5, b=5),
+        showlegend=True,
+        legend=dict(yanchor="bottom", y=0.01, xanchor="left", x=0.01,
+                    bgcolor='rgba(255,255,255,0.7)'),
+        annotations=[dict(
+            text=f"Time: {df_anim['DateTime'].iloc[0].strftime('%Y-%m-%d %H:%M:%S')}<br>Speed: {df_anim['Speed_kmh_display'].iloc[0]:.1f} km/h",
+            align='left',
+            showarrow=False,
+            xref='paper',
+            yref='paper',
+            x=0.02,
+            y=0.98,
+            bgcolor='rgba(255,255,255,0.7)',
+            borderpad=4
+        )],
         updatemenus=[dict(
-            type="buttons", direction="right", showactive=False, x=0.95, y=0.05, xanchor="right", yanchor="bottom",
+            type="buttons",
+            direction="right",
+            showactive=False,
+            x=0.95,
+            y=0.05,
+            xanchor="right",
+            yanchor="bottom",
             buttons=[
-                dict(label="Play", method="animate", args=[None, {"frame": {"duration": frame_duration, "redraw": True}, "fromcurrent": True, "transition": {"duration": transition_duration}, "mode": "immediate"}]), # Immediate mode
-                dict(label="Pause", method="animate", args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate", "transition": {"duration": 0}}])
+                dict(
+                    label="Play",
+                    method="animate",
+                    args=[None, {"frame": {"duration": frame_duration, "redraw": True},
+                                 "fromcurrent": True, "transition": {"duration": transition_duration},
+                                 "mode": "immediate"}]
+                ),
+                dict(
+                    label="Pause",
+                    method="animate",
+                    args=[[None], {"frame": {"duration": 0, "redraw": False},
+                                   "mode": "immediate", "transition": {"duration": 0}}]
+                )
             ]
         )],
         sliders=[dict(
-            active=0, currentvalue={"prefix": "Point Index: ", "font": {"size": 14}}, pad={"b": 10, "t": 10}, len=0.8, x=0.1, y=0.05, yanchor="bottom",
-             # args trong step cũng dùng immediate mode và transition=0
-            steps=[{"args": [[f.name], {"frame": {"duration": frame_duration, "redraw": True}, "mode": "immediate", "transition": {"duration": transition_duration}}],
-                    "label": str(k), "method": "animate"} for k, f in enumerate(fig.frames)]
+            active=0,
+            currentvalue={"prefix": "Point Index: ", "font": {"size": 14}},
+            pad={"b": 10, "t": 10},
+            len=0.8,
+            x=0.1,
+            y=0.05,
+            yanchor="bottom",
+            steps=[{"args": [[f.name],
+                              {"frame": {"duration": frame_duration, "redraw": True},
+                               "mode": "immediate", "transition": {"duration": transition_duration}}],
+                    "label": str(k),
+                    "method": "animate"} for k, f in enumerate(fig.frames)]
         )]
     )
 
-    return fig # Return the figure object
+    return fig
+
+
 
 def visualize_congestion(df_features, speed_thresh_kmh=10):
     """Visualizes congestion points using Folium MarkerCluster."""
