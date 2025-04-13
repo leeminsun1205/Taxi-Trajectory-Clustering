@@ -5,3 +5,4 @@ tslearn
 folium
 streamlit_folium
 plotly
+scikit-learn-extra
