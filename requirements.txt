@@ -1,8 +1,9 @@
-matplotlib
-numpy
-scikit-learn
-tslearn
-folium
-streamlit_folium
-plotly
-scikit-learn-extra
+#python==3.11.1
+matplotlib==3.10.1
+numpy==1.24.3
+scikit-learn==1.6.1
+tslearn==0.6.3
+folium==0.19.5
+streamlit_folium==0.24.0
+plotly==6.0.1
+scikit-learn-extra==0.3.0
