@@ -127,54 +127,6 @@ def preprocess_data(_filtered_df):
                             .apply(lambda x: x.values).tolist()
     traj_ids = processed_df['TaxiID'].unique().tolist() # Order matches traj_data
     return traj_data, processed_df, traj_ids
-
-def calculate_summary(_processed_df_labeled, _traj_data, _traj_ids, _labels):
-    """Generates summary statistics for each valid cluster."""
-    summary = []
-    if _processed_df_labeled is None or _traj_data is None or _traj_ids is None or _labels is None or \
-       len(_traj_ids) != len(_labels) or len(_traj_data) != len(_labels):
-        return pd.DataFrame() # Return empty if inputs inconsistent
-
-    id_to_idx = {tid: i for i, tid in enumerate(_traj_ids)}
-    unique_labels = sorted([lbl for lbl in set(_labels) if lbl != -1])
-
-    for label in unique_labels:
-        cluster_df = _processed_df_labeled[_processed_df_labeled['ClusterLabel'] == label]
-        if cluster_df.empty: continue
-        cluster_traj_ids = cluster_df['TaxiID'].unique()
-        cluster_indices = [id_to_idx[tid] for tid in cluster_traj_ids if tid in id_to_idx]
-        if not cluster_indices: continue
-
-        n_traj = len(cluster_indices)
-        points = [len(_traj_data[i]) for i in cluster_indices if i < len(_traj_data)]
-        avg_pts = np.mean(points) if points else 0
-        earliest, latest = cluster_df['DateTime'].min(), cluster_df['DateTime'].max()
-
-        durations = []
-        for tid in cluster_traj_ids:
-            traj_pts = cluster_df[cluster_df['TaxiID'] == tid]
-            if len(traj_pts) >= 2: durations.append((traj_pts['DateTime'].max() - traj_pts['DateTime'].min()).total_seconds())
-        avg_dur = np.mean(durations) if durations else np.nan
-
-        avg_spd = cluster_df['Speed_kmh'].mean() if 'Speed_kmh' in cluster_df.columns else np.nan
-
-        summary.append({
-            "Cluster": label, "Num Trajectories": n_traj, "Avg Points/Traj": f"{avg_pts:.1f}",
-            "Earliest Point": earliest, "Latest Point": latest,
-            "Avg Duration (s)": f"{avg_dur:.0f}" if pd.notna(avg_dur) else "N/A",
-            "Avg Speed (km/h)": f"{avg_spd:.1f}" if pd.notna(avg_spd) else "N/A",
-        })
-
-    if not summary: return pd.DataFrame()
-    summary_df = pd.DataFrame(summary).set_index("Cluster")
-    # Format datetime columns safely
-    time_fmt = '%Y-%m-%d %H:%M' # Shorter format
-    for col in ['Earliest Point', 'Latest Point']:
-         if pd.api.types.is_datetime64_any_dtype(summary_df[col]):
-             summary_df[col] = summary_df[col].dt.strftime(time_fmt).fillna("N/A")
-         else: summary_df[col] = "N/A"
-    return summary_df
-
 # --- Visualization Functions ---
 
 def display_stats(raw_len, processed_df, traj_data):

@@ -1,6 +1,9 @@
+#tab_4.py
 import streamlit as st
 import pandas as pd
 import numpy as np
+import math
+from sklearn.cluster import DBSCAN
 import folium
 import plotly.express as px
 import matplotlib.colors
@@ -10,7 +13,53 @@ import similaritymeasures
 from streamlit_folium import folium_static
 from sklearn.metrics import silhouette_score
 
-# --- Distance Matrix Calculation (Cached) ---
+def point_to_line_distance(point, start, end):
+    x0, y0 = point
+    x1, y1 = start
+    x2, y2 = end
+    num = abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1)
+    den = math.hypot(y2 - y1, x2 - x1)
+    if den == 0:
+        return math.hypot(x0 - x1, y0 - y1)
+    return num / den
+
+def partition_trajectory(trajectory, threshold=0.0005):
+    segments = []
+    start_idx = 0
+    n = len(trajectory)
+    if n < 3:
+        return [trajectory]
+    for i in range(1, n - 1):
+        d = point_to_line_distance(trajectory[i], trajectory[start_idx], trajectory[i + 1])
+        if d > threshold:
+            segments.append(trajectory[start_idx:i + 1])
+            start_idx = i
+    segments.append(trajectory[start_idx:])
+    return segments
+
+def extract_segment_features(segment):
+    segment = np.array(segment)
+    start = segment[0]
+    end = segment[-1]
+    midpoint = (start + end) / 2
+    angle = math.atan2(end[1] - start[1], end[0] - start[0])
+    return np.array([midpoint[0], midpoint[1], angle])
+
+def TRACLUS(trajectories, partition_threshold=0.0005, eps_cluster=0.001, min_samples=2):
+    all_segments = []
+    segment_features = []
+    segment_origin = []
+    for i, traj in enumerate(trajectories):
+        segments = partition_trajectory(traj, threshold=partition_threshold)
+        for seg in segments:
+            feat = extract_segment_features(seg)
+            all_segments.append(seg)
+            segment_features.append(feat)
+            segment_origin.append(i)
+    segment_features = np.array(segment_features)
+    clustering = DBSCAN(eps=eps_cluster, min_samples=min_samples)
+    labels = clustering.fit_predict(segment_features)
+    return labels, all_segments, segment_features, segment_origin
 
 # @st.cache_data(show_spinner=False)
 def calculate_distance_matrix(_trajectory_data, metric='dtw'):
@@ -96,6 +145,54 @@ def calculate_silhouette(dist_matrix, labels):
             try: return silhouette_score(dist_matrix, labels, metric='precomputed')
             except ValueError: return None # Handle cases like all points in one cluster
     return None # Default return if conditions not met
+
+def calculate_clustering_summary(_processed_df_labeled, _traj_data, _traj_ids, _labels):
+    """Generates summary statistics for each valid cluster."""
+    summary = []
+    if _processed_df_labeled is None or _traj_data is None or _traj_ids is None or _labels is None or \
+       len(_traj_ids) != len(_labels) or len(_traj_data) != len(_labels):
+        return pd.DataFrame() # Return empty if inputs inconsistent
+
+    id_to_idx = {tid: i for i, tid in enumerate(_traj_ids)}
+    unique_labels = sorted([lbl for lbl in set(_labels) if lbl != -1])
+
+    for label in unique_labels:
+        cluster_df = _processed_df_labeled[_processed_df_labeled['ClusterLabel'] == label]
+        if cluster_df.empty: continue
+        cluster_traj_ids = cluster_df['TaxiID'].unique()
+        cluster_indices = [id_to_idx[tid] for tid in cluster_traj_ids if tid in id_to_idx]
+        if not cluster_indices: continue
+
+        n_traj = len(cluster_indices)
+        points = [len(_traj_data[i]) for i in cluster_indices if i < len(_traj_data)]
+        avg_pts = np.mean(points) if points else 0
+        earliest, latest = cluster_df['DateTime'].min(), cluster_df['DateTime'].max()
+
+        durations = []
+        for tid in cluster_traj_ids:
+            traj_pts = cluster_df[cluster_df['TaxiID'] == tid]
+            if len(traj_pts) >= 2: durations.append((traj_pts['DateTime'].max() - traj_pts['DateTime'].min()).total_seconds())
+        avg_dur = np.mean(durations) if durations else np.nan
+
+        avg_spd = cluster_df['Speed_kmh'].mean() if 'Speed_kmh' in cluster_df.columns else np.nan
+
+        summary.append({
+            "Cluster": label, "Num Trajectories": n_traj, "Avg Points/Traj": f"{avg_pts:.1f}",
+            "Earliest Point": earliest, "Latest Point": latest,
+            "Avg Duration (s)": f"{avg_dur:.0f}" if pd.notna(avg_dur) else "N/A",
+            "Avg Speed (km/h)": f"{avg_spd:.1f}" if pd.notna(avg_spd) else "N/A",
+        })
+
+    if not summary: return pd.DataFrame()
+    summary_df = pd.DataFrame(summary).set_index("Cluster")
+    # Format datetime columns safely
+    time_fmt = '%Y-%m-%d %H:%M' # Shorter format
+    for col in ['Earliest Point', 'Latest Point']:
+         if pd.api.types.is_datetime64_any_dtype(summary_df[col]):
+             summary_df[col] = summary_df[col].dt.strftime(time_fmt).fillna("N/A")
+         else: summary_df[col] = "N/A"
+    return summary_df
+
 
 def visualize_clusters(proc_df, traj_data, labels, traj_ids, proto_indices=None):
     """Folium map visualizing clustered trajectories."""
