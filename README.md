@@ -58,16 +58,41 @@
 <!-- Đồ án môn học -->
 ## 🎯 ĐỒ ÁN MÔN HỌC
 <a name="doan"></a>
-- Mô tả chi tiết đồ án môn học sẽ được cập nhật sau.
 
-<hr>
+---
 
-<!-- Dự phòng cho project -->
-## 🔧 DỰ PHÒNG CHO PROJECT
-<a name="duphong"></a>
+## 🚀 Hướng dẫn cài đặt và chạy ứng dụng
 
-🚀 **Nội dung này sẽ được cập nhật sau khi có thông tin về project.**  
-📝 Bạn có thể sử dụng phần này để lưu trữ thông tin quan trọng, tài liệu tham khảo hoặc hướng dẫn triển khai project.  
+### 1. Tải source code
+```bash
+git clone https://github.com/leeminsun1205/CS313.P23.G9.git
+```
+
+### 2. Cài đặt Anaconda (nếu chưa có)
+Tải và cài đặt Anaconda từ: [https://www.anaconda.com/products/distribution](https://www.anaconda.com/products/distribution)
+
+### 3. Tạo và kích hoạt môi trường ảo
+```bash
+conda create -n ten_cua_moi_truong python=3.11
+conda activate ten_cua_moi_truong
+```
+> 🔁 Bạn có thể thay `ten_cua_moi_truong` bằng tên môi trường bạn muốn.
+
+### 4. Cài đặt các thư viện phụ thuộc
+```bash
+cd CS313.P23.G9
+pip install -r requirements.txt
+```
+
+### 5. Chạy ứng dụng
+```bash
+streamlit run traclus/main.py
+```
+
+---
+
+📌 Nếu gặp lỗi thiếu thư viện, hãy kiểm tra lại `requirements.txt` và đảm bảo mọi gói cần thiết đã được cài đặt.
+
 
 <hr>
 
