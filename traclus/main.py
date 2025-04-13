@@ -5,15 +5,11 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 import io
 from sklearn_extra.cluster import KMedoids
-from utils import (
-    upload_data, filter_data_by_date, filter_data_by_hours,
-    calculate_trajectory_features, filter_invalid_moves, preprocess_data,
-    calculate_distance_matrix, find_dbscan_prototypes, calculate_silhouette,
-    calculate_cluster_summary, display_stats, visualize_1, visualize_2,
-    visualize_heatmap, detect_stops, visualize_single_trajectory_animation_plotly,
-    visualize_congestion, visualize_clusters, plot_cluster_sizes
-)
-
+from processing import *
+from tab_1 import *
+from tab_2 import *
+from tab_3 import *
+from tab_4 import *
 # --- Page Config ---
 st.set_page_config(layout="wide", page_title="Trajectory Analysis", initial_sidebar_state="expanded")
 st.title("🚀 Trajectory Analysis")
@@ -22,7 +18,6 @@ st.title("🚀 Trajectory Analysis")
 STATE_FILE_ID = 'file_identifier'
 STATE_RAW_DF = 'raw_df'
 STATE_AVAILABLE_DATES = 'available_dates'
-STATE_DF_WITH_FEATURES = 'df_with_features'
 STATE_FILTERED_DF = 'filtered_df'
 STATE_PROCESSED_DF = 'processed_df'
 STATE_TRAJECTORY_DATA = 'trajectory_data'
@@ -36,7 +31,7 @@ STATE_PROCESSED_DF_LABELED = 'processed_df_with_labels'
 STATE_PROTOTYPE_INDICES = 'prototype_indices'
 STATE_SELECTED_ALGO = 'selected_algo'
 STATE_TRIGGER_PROCESSING = 'trigger_processing'
-STATE_SELECTED_ANIM_ID = 'selected_anim_id' # State for selected animation ID
+STATE_SELECTED_ANIM_ID = 'selected_anim_id' 
 
 # Filter Cache Keys
 CACHE_SELECTED_DATES = 'selected_dates_cache'
@@ -51,7 +46,7 @@ CACHE_KMEDOIDS_METHOD = 'kmedoids_method_cache'
 # --- Initialize Session State ---
 default_values = {
     STATE_FILE_ID: None, STATE_RAW_DF: None, STATE_AVAILABLE_DATES: [],
-    STATE_DF_WITH_FEATURES: None, STATE_FILTERED_DF: None, STATE_PROCESSED_DF: None,
+    STATE_FILTERED_DF: None, STATE_PROCESSED_DF: None,
     STATE_TRAJECTORY_DATA: None, STATE_TRAJECTORY_IDS: None, STATE_DISTANCE_MATRIX: None,
     STATE_LABELS: None, STATE_RAN_CLUSTERING: False, STATE_SELECTED_METRIC: 'dtw',
     STATE_LAST_METRIC_RUN: None, STATE_PROCESSED_DF_LABELED: None, STATE_PROTOTYPE_INDICES: None,
@@ -86,8 +81,8 @@ def reset_downstream_clustering_state():
 
 def reset_processed_data_state():
      keys_to_reset = [
-        STATE_DF_WITH_FEATURES, STATE_FILTERED_DF, STATE_PROCESSED_DF,
-        STATE_TRAJECTORY_DATA, STATE_TRAJECTORY_IDS, STATE_SELECTED_ANIM_ID # Also reset selected anim ID
+        STATE_FILTERED_DF, STATE_PROCESSED_DF,
+        STATE_TRAJECTORY_DATA, STATE_TRAJECTORY_IDS, STATE_SELECTED_ANIM_ID
      ]
      for key in keys_to_reset:
         st.session_state[key] = default_values.get(key)
@@ -154,30 +149,27 @@ with st.sidebar:
                 st.session_state[CACHE_MAX_SPEED] = max_speed
                 st.session_state[STATE_TRIGGER_PROCESSING] = True
 
-
 # --- Data Processing Pipeline ---
 if st.session_state.get(STATE_TRIGGER_PROCESSING, False):
     st.session_state[STATE_TRIGGER_PROCESSING] = False
     raw_df_current = st.session_state.get(STATE_RAW_DF)
     if raw_df_current is not None and not raw_df_current.empty:
-        # st.info("Applying filters and processing data...")
-        with st.spinner("Processing..."):
-            sd = st.session_state.get(CACHE_SELECTED_DATES)
-            hr = st.session_state.get(CACHE_HOUR_RANGE, (0, 24))
-            aaf = st.session_state.get(CACHE_APPLY_ANOMALY, False)
-            ms = st.session_state.get(CACHE_MAX_SPEED, 100)
-            df_step1 = filter_data_by_date(raw_df_current, sd, len(st.session_state[STATE_AVAILABLE_DATES]))
-            # st.write(len(df_step1))
-            df_step2 = filter_data_by_hours(df_step1, hr)
-            # st.write(len(df_step2))
-            df_step3 = calculate_trajectory_features(df_step2)
-            # st.write(len(df_step3))
-            df_step4 = df_step3.copy()
-            if st.session_state[CACHE_APPLY_ANOMALY]:
-                df_step4 = filter_invalid_moves(df_step4, ms) if aaf else df_step4
+        with st.spinner("Processing dataset..."):
+            if st.session_state[STATE_PROCESSED_DF] is None:
+                df_step4 = calculate_trajectory_features(raw_df_current)
+            else:
+                sd = st.session_state.get(CACHE_SELECTED_DATES)
+                hr = st.session_state.get(CACHE_HOUR_RANGE, (0, 24))
+                aaf = st.session_state.get(CACHE_APPLY_ANOMALY, False)
+                ms = st.session_state.get(CACHE_MAX_SPEED, 100)
+                df_step1 = filter_data_by_date(raw_df_current, sd, len(st.session_state[STATE_AVAILABLE_DATES]))
+                df_step2 = filter_data_by_hours(df_step1, hr)
+                df_step3 = calculate_trajectory_features(df_step2)
+                df_step4 = df_step3.copy()
+                if st.session_state[CACHE_APPLY_ANOMALY]:
+                    df_step4 = filter_invalid_moves(df_step4, ms) if aaf else df_step4
             traj_data, proc_df, traj_ids = preprocess_data(df_step4)
-            # st.write(len(proc_df))
-            st.session_state[STATE_DF_WITH_FEATURES] = df_step3
+
             st.session_state[STATE_FILTERED_DF] = df_step4
             st.session_state[STATE_PROCESSED_DF] = proc_df
             st.session_state[STATE_TRAJECTORY_DATA] = traj_data
@@ -194,7 +186,6 @@ if st.session_state.get(STATE_TRIGGER_PROCESSING, False):
 
 # --- Main Area ---
 raw_df_main = st.session_state.get(STATE_RAW_DF)
-df_features_main = st.session_state.get(STATE_DF_WITH_FEATURES)
 processed_df_main = st.session_state.get(STATE_PROCESSED_DF)
 traj_data_main = st.session_state.get(STATE_TRAJECTORY_DATA)
 traj_ids_main = st.session_state.get(STATE_TRAJECTORY_IDS)
@@ -206,7 +197,6 @@ else:
     display_stats(len(processed_df_main), processed_df_main, traj_data_main)
     st.markdown("---")
 
-    df_viz_features = df_features_main if isinstance(df_features_main, pd.DataFrame) else pd.DataFrame()
     df_viz_processed = processed_df_main if isinstance(processed_df_main, pd.DataFrame) else pd.DataFrame()
     
     # --- Tabs ---
@@ -215,23 +205,24 @@ else:
     
     # --- Tab Content Containers ---
     tab1, tab2, tab3, tab4 = selected_tab_label_tuple
+
     with tab1: # Corresponds to "📍 Overview"
         st.subheader("🗺️ Trajectory Overview & Density")
         if not df_viz_processed.empty:
             map_type = st.radio("Map Type", ["Folium", "Plotly"], key='rb_map_type_overview', horizontal=True)
             if map_type == "Folium":
-                visualize_1(df_viz_features)
+                visualize_1(df_viz_processed)
             else:
                 visualize_2(df_viz_processed)
             st.markdown("---")
-            visualize_heatmap(df_viz_features)
+            visualize_heatmap(df_viz_processed)
         else: st.info("No trajectories to visualize.")
 
     with tab2: # Corresponds to "🚗 Animation"
         st.subheader("🚗 Single Taxi Animation")
-        if not df_viz_features.empty:
+        if not df_viz_processed.empty:
             # Use the full dataframe with features for ID selection and filtering
-            available_ids_anim = sorted(df_viz_features['TaxiID'].unique())
+            available_ids_anim = sorted(df_viz_processed['TaxiID'].unique())
 
             if available_ids_anim:
                 # Function to update selected ID in state
@@ -242,7 +233,7 @@ else:
                 default_anim_id = st.session_state.get(STATE_SELECTED_ANIM_ID)
                 if default_anim_id not in available_ids_anim:
                     default_anim_id = available_ids_anim[0]
-                    st.session_state[STATE_SELECTED_ANIM_ID] = default_anim_id # Initialize state
+                    st.session_state[STATE_SELECTED_ANIM_ID] = default_anim_id 
 
                 sel_id_anim = st.selectbox(
                     "Select TaxiID",
@@ -251,11 +242,9 @@ else:
                     key="sb_anim_id_widget", # Widget key
                     on_change=update_selected_anim_id # Callback to update state
                 )
-                # st.write(sel_id_anim)
-                # Filter data based on the *currently selected* ID
-                # Ensure sel_id_anim is used directly here after the selectbox renders
-                df_taxi_anim = df_viz_features[df_viz_features['TaxiID'] == sel_id_anim].copy()
-                # st.write(df_taxi_anim)
+
+                df_taxi_anim = df_viz_processed[df_viz_processed['TaxiID'] == sel_id_anim].copy()
+
                 if not df_taxi_anim.empty:   
                     # --- Animation Controls ---
                     speed_multiplier = st.slider(
@@ -269,8 +258,7 @@ else:
                     # Detect stops (cached based on df_taxi_anim)
                     df_stops = detect_stops(df_taxi_anim, speed_thresh, min_dur)
 
-                    # if df_stops is not None and not df_stops.empty:
-                    #     # Generate the Plotly figure
+                    # Generate the Plotly figure
                     fig_anim = visualize_single_trajectory_animation_plotly(df_stops, speed_multiplier=speed_multiplier)
 
                     # Display with a dynamic key based on the selected ID
@@ -278,22 +266,17 @@ else:
                         st.plotly_chart(fig_anim, use_container_width=True, key=f"anim_plot_{sel_id_anim}")
                     else:
                         st.warning(f"Could not generate animation for Taxi {sel_id_anim}.")
-                    # else:
-                    #     st.info(f"No valid points after stop detection for Taxi {sel_id_anim}.")
                 else:
-                     st.info(f"No data found for selected Taxi ID: {sel_id_anim}") # Should not happen if ID is from list
-
+                     st.info(f"No data found for selected Taxi ID: {sel_id_anim}")
             else: st.info("No unique Taxi IDs found in the filtered data.")
         else: st.info("No data with features available for animation (Apply filters first).")
 
-
     with tab3: # Corresponds to "🚦 Congestion"
         st.subheader("🚦 Congestion Hotspots")
-        if not df_viz_features.empty:
+        if not df_viz_processed.empty:
             cong_speed = st.slider("Max Speed for Congestion (km/h)", 5, 40, 10, key='sl_cong_spd_tab3')
-            visualize_congestion(df_viz_features, cong_speed)
+            visualize_congestion(df_viz_processed, cong_speed)
         else: st.info("No data with features available for congestion analysis.")
-
 
     with tab4: # Corresponds to "🧩 Clustering"
         st.subheader("🧩 Trajectory Clustering")
@@ -382,7 +365,7 @@ else:
                      dist_mat_disp, df_labeled_disp = st.session_state.get(STATE_DISTANCE_MATRIX), st.session_state.get(STATE_PROCESSED_DF_LABELED)
                      visualize_clusters(processed_df_main, traj_data_main, labels_disp, traj_ids_main, prototypes_disp)
                      st.markdown("---"); st.subheader("📈 Cluster Summary & Performance")
-                     summary_df = calculate_cluster_summary(df_labeled_disp, traj_data_main, traj_ids_main, labels_disp)
+                     summary_df = calculate_summary(df_labeled_disp, traj_data_main, traj_ids_main, labels_disp)
                      if not summary_df.empty: st.dataframe(summary_df)
                      else: st.info("Could not generate cluster summary.")
                      c1r, c2r = st.columns(2)
