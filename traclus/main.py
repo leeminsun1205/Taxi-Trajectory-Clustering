@@ -53,7 +53,7 @@ default_values = {
     STATE_SELECTED_ALGO: 'DBSCAN', STATE_TRIGGER_PROCESSING: False, STATE_SELECTED_ANIM_ID: None,
     'active_tab': '📍 Overview', 
 
-    CACHE_SELECTED_DATES: [], CACHE_HOUR_RANGE: (0, 24),
+    CACHE_SELECTED_DATES: [], CACHE_HOUR_RANGE: (0, 23),
     CACHE_APPLY_ANOMALY: False, CACHE_MAX_SPEED: 100, 
     CACHE_DBSCAN_MIN_SAMPLES: 3, CACHE_KMEDOIDS_METHOD: 'pam'
 }
@@ -125,7 +125,7 @@ with st.sidebar:
     if st.session_state.get(STATE_RAW_DF) is not None:
         st.subheader("Data Filters")
         current_dates = st.session_state.get(CACHE_SELECTED_DATES, st.session_state[STATE_AVAILABLE_DATES])
-        current_hour_range = st.session_state.get(CACHE_HOUR_RANGE, (0, 24))
+        current_hour_range = st.session_state.get(CACHE_HOUR_RANGE, (0, 23))
         current_anomaly = st.session_state.get(CACHE_APPLY_ANOMALY, False)
         current_speed = st.session_state.get(CACHE_MAX_SPEED, 100)
 
@@ -159,7 +159,7 @@ if st.session_state.get(STATE_TRIGGER_PROCESSING, False):
                 df_step4 = calculate_trajectory_features(raw_df_current)
             else:
                 sd = st.session_state.get(CACHE_SELECTED_DATES)
-                hr = st.session_state.get(CACHE_HOUR_RANGE, (0, 24))
+                hr = st.session_state.get(CACHE_HOUR_RANGE, (0, 23))
                 aaf = st.session_state.get(CACHE_APPLY_ANOMALY, False)
                 ms = st.session_state.get(CACHE_MAX_SPEED, 100)
                 df_step1 = filter_data_by_date(raw_df_current, sd, len(st.session_state[STATE_AVAILABLE_DATES]))

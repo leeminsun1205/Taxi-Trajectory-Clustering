@@ -49,13 +49,13 @@ def filter_data_by_date(df, selected_dates, len_sad):
     return df[df['DateTime'].dt.date.isin(dates_to_filter)].copy()
 
 # @st.cache_data
-def filter_data_by_hours(df, custom_hour_range=(0, 24)):
+def filter_data_by_hours(df, custom_hour_range=(0, 23)):
     """Filters DataFrame by time of day."""
     dt = df['DateTime'].dt
     start, end = custom_hour_range
-    if start == 0 and end == 24: return df.copy() # No filter needed
-    if end == 24: return df[dt.hour >= start].copy() 
-    return df[(dt.hour >= start) & (dt.hour < end)].copy()
+    if start == 0 and end == 23: return df.copy() # No filter needed
+    if end == 23: return df[dt.hour >= start].copy() 
+    return df[(dt.hour >= start) & (dt.hour <= end)].copy()
 
 # --- Feature Calculation & Anomaly Filtering (Cached) ---
 
