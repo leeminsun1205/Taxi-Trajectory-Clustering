@@ -12,6 +12,8 @@ from tslearn.metrics import dtw as tslearn_dtw
 import similaritymeasures
 from streamlit_folium import folium_static
 from sklearn.metrics import silhouette_score
+from sklearn.manifold import MDS
+import seaborn as sns
 
 def point_to_line_distance(point, start, end):
     x0, y0 = point
@@ -147,52 +149,73 @@ def calculate_silhouette(dist_matrix, labels):
     return None # Default return if conditions not met
 
 def calculate_clustering_summary(_processed_df_labeled, _traj_data, _traj_ids, _labels):
-    """Generates summary statistics for each valid cluster."""
+    """Generates summary statistics for each valid cluster, including formatted durations and speed (excluding 0)."""
     summary = []
     if _processed_df_labeled is None or _traj_data is None or _traj_ids is None or _labels is None or \
        len(_traj_ids) != len(_labels) or len(_traj_data) != len(_labels):
-        return pd.DataFrame() # Return empty if inputs inconsistent
+        return pd.DataFrame()
 
     id_to_idx = {tid: i for i, tid in enumerate(_traj_ids)}
     unique_labels = sorted([lbl for lbl in set(_labels) if lbl != -1])
 
     for label in unique_labels:
         cluster_df = _processed_df_labeled[_processed_df_labeled['ClusterLabel'] == label]
-        if cluster_df.empty: continue
+        if cluster_df.empty:
+            continue
+
         cluster_traj_ids = cluster_df['TaxiID'].unique()
         cluster_indices = [id_to_idx[tid] for tid in cluster_traj_ids if tid in id_to_idx]
-        if not cluster_indices: continue
+        if not cluster_indices:
+            continue
 
         n_traj = len(cluster_indices)
         points = [len(_traj_data[i]) for i in cluster_indices if i < len(_traj_data)]
         avg_pts = np.mean(points) if points else 0
+
         earliest, latest = cluster_df['DateTime'].min(), cluster_df['DateTime'].max()
 
         durations = []
         for tid in cluster_traj_ids:
             traj_pts = cluster_df[cluster_df['TaxiID'] == tid]
-            if len(traj_pts) >= 2: durations.append((traj_pts['DateTime'].max() - traj_pts['DateTime'].min()).total_seconds())
-        avg_dur = np.mean(durations) if durations else np.nan
+            if len(traj_pts) >= 2:
+                dur = (traj_pts['DateTime'].max() - traj_pts['DateTime'].min()).total_seconds()
+                durations.append(dur)
+        avg_dur_s = np.mean(durations) if durations else np.nan
 
-        avg_spd = cluster_df['Speed_kmh'].mean() if 'Speed_kmh' in cluster_df.columns else np.nan
+        def format_seconds(seconds):
+            if pd.isna(seconds): return "N/A"
+            h, m = divmod(int(seconds), 3600)
+            m, s = divmod(m, 60)
+            return f"{h:02}:{m:02}:{s:02}"
+
+        avg_spd_all = cluster_df['Speed_kmh'].mean() if 'Speed_kmh' in cluster_df.columns else np.nan
+        avg_spd_nonzero = cluster_df.loc[cluster_df['Speed_kmh'] > 0, 'Speed_kmh'].mean()
 
         summary.append({
-            "Cluster": label, "Num Trajectories": n_traj, "Avg Points/Traj": f"{avg_pts:.1f}",
-            "Earliest Point": earliest, "Latest Point": latest,
-            "Avg Duration (s)": f"{avg_dur:.0f}" if pd.notna(avg_dur) else "N/A",
-            "Avg Speed (km/h)": f"{avg_spd:.1f}" if pd.notna(avg_spd) else "N/A",
+            "Cluster": label,
+            "Num Trajectories": n_traj,
+            "Avg Points/Traj": f"{avg_pts:.1f}",
+            "Earliest Point": earliest,
+            "Latest Point": latest,
+            "Avg Duration": format_seconds(avg_dur_s),
+            "Avg Speed (km/h)": f"{avg_spd_all:.1f}" if pd.notna(avg_spd_all) else "N/A",
+            "Avg Speed (non-zero km/h)": f"{avg_spd_nonzero:.1f}" if pd.notna(avg_spd_nonzero) else "N/A",
         })
 
-    if not summary: return pd.DataFrame()
-    summary_df = pd.DataFrame(summary).set_index("Cluster")
-    # Format datetime columns safely
-    time_fmt = '%Y-%m-%d %H:%M' # Shorter format
-    for col in ['Earliest Point', 'Latest Point']:
-         if pd.api.types.is_datetime64_any_dtype(summary_df[col]):
-             summary_df[col] = summary_df[col].dt.strftime(time_fmt).fillna("N/A")
-         else: summary_df[col] = "N/A"
-    return summary_df
+    if not summary:
+        return pd.DataFrame()
 
+    summary_df = pd.DataFrame(summary).set_index("Cluster")
+
+    # Format datetime columns safely
+    time_fmt = '%Y-%m-%d %H:%M'
+    for col in ['Earliest Point', 'Latest Point']:
+        if pd.api.types.is_datetime64_any_dtype(summary_df[col]):
+            summary_df[col] = summary_df[col].dt.strftime(time_fmt).fillna("N/A")
+        else:
+            summary_df[col] = "N/A"
+
+    return summary_df
 
 def visualize_clusters(proc_df, traj_data, labels, traj_ids, proto_indices=None):
     """Folium map visualizing clustered trajectories."""
@@ -231,7 +254,7 @@ def visualize_clusters(proc_df, traj_data, labels, traj_ids, proto_indices=None)
                             popup=f"ID: {tid}<br>Cluster: {lbl}{' (Proto)' if is_proto else ''}"
                            ).add_to(layers[name])
     if layers: folium.LayerControl(collapsed=False).add_to(m)
-    folium_static(m, height=600)
+    folium_static(m, width=1200, height=600)
 
 def plot_cluster_sizes(labels):
     """Bar chart of cluster sizes."""
@@ -248,3 +271,20 @@ def plot_cluster_sizes(labels):
                           xaxis={'categoryorder': 'array', 'categoryarray': sorted_cats})
         st.plotly_chart(fig, use_container_width=True)
 
+def plot_pca_projection(dist_mat, labels, title="PCA Projection of Clusters"):
+    if dist_mat is None or len(dist_mat) < 2:
+        st.info("Not enough data to project.")
+        return
+    try:
+        mds = MDS(n_components=2, dissimilarity='precomputed', random_state=42)
+        coords = mds.fit_transform(dist_mat)
+
+        fig, ax = plt.subplots()
+        sns.scatterplot(x=coords[:, 0], y=coords[:, 1], hue=labels, palette="tab10", ax=ax)
+        ax.set_title(title)
+        ax.set_xlabel("Component 1")
+        ax.set_ylabel("Component 2")
+        ax.legend(title="Cluster", bbox_to_anchor=(1.05, 1), loc='upper left')
+        st.pyplot(fig)
+    except Exception as e:
+        st.warning(f"Could not generate PCA projection: {e}")

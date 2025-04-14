@@ -50,7 +50,7 @@ def visualize_1(df_features):
                             weight=2, opacity=0.7, popup=popup).add_to(m)
 
     folium.LayerControl().add_to(m)
-    folium_static(m, height=600)
+    folium_static(m, width=1200, height=600)
 
 def visualize_2(processed_df): # Plotly Map
     """Plotly map showing individual trajectories."""
@@ -76,4 +76,4 @@ def visualize_heatmap(df_features):
     except: center = [39.9, 116.4]
     m = folium.Map(location=center, zoom_start=11, tiles="cartodbpositron")
     HeatMap(heat_data, radius=10, blur=7).add_to(m)
-    folium_static(m, height=500)
+    folium_static(m, width=1200,height=600)

@@ -64,7 +64,7 @@ for key, value in default_values.items():
 # --- Helper Functions ---
 def reset_all_state():
     st.cache_data.clear()
-    for metric in ['dtw', 'frechet', 'hausdorff']:
+    for metric in ['dtw', 'frechet']:
         st.session_state.pop(f'{CACHE_DBSCAN_EPS_PREFIX}{metric}', None)
         st.session_state.pop(f'{CACHE_KMEDOIDS_K_PREFIX}{metric}', None)
     for key, value in default_values.items():
@@ -290,7 +290,7 @@ else:
                 with st.container(border=True):
                     c1, c2 = st.columns(2)
                     with c1:
-                        metrics = ['dtw', 'frechet', 'hausdorff']
+                        metrics = ['dtw', 'frechet']
                         sel_metric = st.selectbox("Distance Metric", metrics, index=metrics.index(st.session_state.get(STATE_SELECTED_METRIC, 'dtw')), key='sb_metric_clust')
                         algos = ["DBSCAN", "K-Medoids"]
                         sel_algo = st.selectbox("Algorithm", algos, index=algos.index(st.session_state.get(STATE_SELECTED_ALGO, 'DBSCAN')), key='sb_algo_clust')
@@ -318,14 +318,14 @@ else:
                             st.write("**K-Medoids Params**")
                             max_k = max(2, num_traj_cluster - 1); k_val = st.session_state.get(kmedoids_k_key, min(3, max_k)); k_val = max(2, min(max_k, k_val))
                             kmedoids_k = st.slider(f"Num Clusters ({sel_metric})", 2, max_k, value=k_val, key=f"sl_k_{sel_metric}_clust")
-                            methods = ['pam', 'alternate']; method_val = st.session_state.get(CACHE_KMEDOIDS_METHOD, 'pam')
-                            kmedoids_method = st.radio("Method", methods, horizontal=True, index=methods.index(method_val), key='rb_kmed_method_clust')
-                            model = KMedoids(n_clusters=kmedoids_k, metric="precomputed", random_state=42, method=kmedoids_method)
+                            # methods = ['pam', 'alternate']; method_val = st.session_state.get(CACHE_KMEDOIDS_METHOD, 'pam')
+                            # kmedoids_method = st.radio("Method", methods, horizontal=True, index=methods.index(method_val), key='rb_kmed_method_clust')
+                            model = KMedoids(n_clusters=kmedoids_k, metric="precomputed", random_state=42)
 
                 st.session_state[STATE_SELECTED_METRIC] = sel_metric
                 st.session_state[STATE_SELECTED_ALGO] = sel_algo
                 if sel_algo == "DBSCAN": st.session_state[dbscan_eps_key], st.session_state[CACHE_DBSCAN_MIN_SAMPLES] = dbscan_eps, dbscan_min_samp
-                elif sel_algo == "K-Medoids": st.session_state[kmedoids_k_key], st.session_state[CACHE_KMEDOIDS_METHOD] = kmedoids_k, kmedoids_method
+                elif sel_algo == "K-Medoids": st.session_state[kmedoids_k_key] = kmedoids_k
 
                 if st.button(f"▶️ Run {sel_algo} ({sel_metric.upper()})", key='btn_run_cluster_tab4', type="primary", use_container_width=True):
                     if model is not None:
@@ -373,6 +373,8 @@ else:
                          st.write("**Performance**"); sil_score = calculate_silhouette(dist_mat_disp, labels_disp)
                          if sil_score is not None: st.metric("Silhouette Score", f"{sil_score:.3f}")
                          else: st.info("Silhouette N/A")
+                         st.write("**Cluster Visualization (2D)**")
+                         plot_pca_projection(dist_mat_disp, labels_disp)
                      with c2r: plot_cluster_sizes(labels_disp)
                 else: st.info("Run clustering to see results.")
         else: st.info("No data available for clustering.")

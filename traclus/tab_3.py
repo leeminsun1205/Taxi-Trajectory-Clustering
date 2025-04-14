@@ -26,4 +26,4 @@ def visualize_congestion(df_features, speed_thresh_kmh=10):
                              color='orange', fill=True, fill_color='red', fill_opacity=0.6,
                              popup=popup).add_to(mc)
     # folium.LayerControl().add_to(m) # Optional layer control
-    folium_static(m, height=500)
+    folium_static(m, width=1200, height=600)

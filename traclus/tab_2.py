@@ -4,11 +4,14 @@ import plotly.graph_objects as go
 
 # --- Stop Detection (Cached) ---
 def detect_stops(_df_single_taxi, speed_thresh_kmh=3.0, min_duration_s=300):
-    """Identifies stops in a single taxi's trajectory (requires features)."""
-    if _df_single_taxi is None or _df_single_taxi.empty: return pd.DataFrame()
-    if 'Speed_kmh' not in _df_single_taxi.columns or 'TimeDiff_s' not in _df_single_taxi.columns:
-        st.warning("Stop detection requires Speed_kmh and TimeDiff_s.")
-        df_out = _df_single_taxi.copy(); df_out['IsStop'] = False
+    """Detects stop segments in a single taxi trajectory."""
+    if _df_single_taxi is None or _df_single_taxi.empty:
+        return pd.DataFrame()
+    
+    required_cols = ['Speed_kmh', 'TimeDiff_s']
+    if not all(col in _df_single_taxi.columns for col in required_cols):
+        df_out = _df_single_taxi.copy()
+        df_out['IsStop'] = False
         return df_out
 
     df = _df_single_taxi.sort_values('DateTime').copy()
@@ -17,23 +20,22 @@ def detect_stops(_df_single_taxi, speed_thresh_kmh=3.0, min_duration_s=300):
 
     for i in range(len(df)):
         speed = df['Speed_kmh'].iloc[i]
-        time_diff = df['TimeDiff_s'].iloc[i] # Duration *since previous point*
+        time_diff = df['TimeDiff_s'].iloc[i]
 
         is_slow = pd.notna(speed) and speed < speed_thresh_kmh
         is_valid_interval = pd.notna(time_diff) and time_diff > 0
 
         if is_slow and is_valid_interval:
-            if start_idx is None: start_idx = i # Mark start of potential stop
-            current_duration += time_diff # Accumulate duration
+            if start_idx is None:
+                start_idx = i
+            current_duration += time_diff
         else:
-            # End of potential stop sequence (or invalid interval)
             if start_idx is not None and current_duration >= min_duration_s:
-                df.loc[df.index[start_idx], 'IsStop'] = True # Mark the START point of the stop
-            start_idx, current_duration = None, 0.0 # Reset
+                df.loc[df.index[start_idx:i], 'IsStop'] = True  # Gắn nhãn cả chuỗi
+            start_idx, current_duration = None, 0.0
 
-    # Check if trajectory ends in a stop
     if start_idx is not None and current_duration >= min_duration_s:
-        df.loc[df.index[start_idx], 'IsStop'] = True
+        df.loc[df.index[start_idx:], 'IsStop'] = True
 
     return df
 
