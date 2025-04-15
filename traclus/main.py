@@ -10,6 +10,10 @@ from tab_1 import *
 from tab_2 import *
 from tab_3 import *
 from tab_4 import *
+import random
+
+random.seed(42)
+np.random.seed(42)
 # --- Page Config ---
 st.set_page_config(layout="wide", page_title="Trajectory Analysis", initial_sidebar_state="expanded")
 st.title("🚀 Trajectory Analysis")
@@ -132,7 +136,7 @@ with st.sidebar:
         with st.expander("Date & Time", expanded=True):
             selected_dates = st.multiselect("Dates Filter", options=st.session_state.get(STATE_AVAILABLE_DATES), default=st.session_state.get(STATE_AVAILABLE_DATES), format_func=lambda d: d.strftime('%Y-%m-%d'), key='ms_dates')
             hour_range = current_hour_range
-            hour_range = st.slider("Hours Filter", 0, 24, value=current_hour_range, key='sl_hours')
+            hour_range = st.slider("Hours Filter", 0, 23, value=current_hour_range, key='sl_hours')
 
         with st.expander("Cleaning"):
             apply_anomaly = st.checkbox("Filter Invalid Moves", value=current_anomaly, key='cb_anomaly')

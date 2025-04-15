@@ -14,6 +14,10 @@ from streamlit_folium import folium_static
 from sklearn.metrics import silhouette_score
 from sklearn.manifold import MDS
 import seaborn as sns
+import random
+
+random.seed(42)
+np.random.seed(42)
 
 def point_to_line_distance(point, start, end):
     x0, y0 = point
