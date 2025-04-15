@@ -378,3 +378,25 @@ else:
                      with c2r: plot_cluster_sizes(labels_disp)
                 else: st.info("Run clustering to see results.")
         else: st.info("No data available for clustering.")
+                # --- Show clustering results ---
+        if st.session_state.get(STATE_LABELS) is not None:
+            st.subheader("📥 Download Clustered Data")
+
+            df_with_labels = pd.DataFrame({
+                'TaxiID': st.session_state[STATE_TRAJECTORY_IDS],
+                'Cluster': st.session_state[STATE_LABELS]
+            })
+            
+            # Hiển thị dataframe cho xem thử
+            st.dataframe(df_with_labels, use_container_width=True)
+
+            # Tạo CSV và nút tải về
+            csv_buffer = io.StringIO()
+            df_with_labels.to_csv(csv_buffer, index=False)
+            st.download_button(
+                label="📥 Download Clustering Result CSV",
+                data=csv_buffer.getvalue(),
+                file_name="clustered_trajectories.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
