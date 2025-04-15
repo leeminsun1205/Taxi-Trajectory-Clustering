@@ -8,20 +8,36 @@ import matplotlib.pyplot as plt
 
 from streamlit_folium import folium_static
 
-# --- Visualization Functions ---
 def visualize_1(df_features):
     """Folium map showing selected trajectories with optional Beijing border."""
-    st.subheader("Trajectories (Folium)")
+    st.subheader("Trajectories")
 
     if df_features is None or df_features.empty:
         st.info("No data for Folium map.")
         return
 
-    all_ids = df_features['TaxiID'].unique()
-    selected_ids = st.multiselect("Select Taxi IDs to display:", all_ids, default=list(all_ids))
+    all_ids = sorted(df_features['TaxiID'].unique())
+
+    if "selected_ids" not in st.session_state:
+        st.session_state.selected_ids = []
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("Select all"):
+            st.session_state.selected_ids = list(all_ids)
+    with col2:
+        if st.button("Reset all"):
+            st.session_state.selected_ids = []
+
+    selected_ids = st.multiselect(
+        "Select Taxi IDs",
+        options=all_ids,
+        default=st.session_state.selected_ids,
+        key="selected_ids"
+    )
 
     if not selected_ids:
-        st.warning("Please select at least one Taxi ID to display.")
+        st.warning("Please select at least one Taxi ID.")
         return
 
     filtered_df = df_features[df_features['TaxiID'].isin(selected_ids)]
@@ -49,22 +65,31 @@ def visualize_1(df_features):
             folium.PolyLine(route, color=id_colors.get(tid, 'gray'),
                             weight=2, opacity=0.7, popup=popup).add_to(m)
 
+    # Thêm chú giải màu sắc (legend)
+    legend_html = """
+    <div style="
+        position: fixed;
+        bottom: 50px;
+        left: 50px;
+        width: 200px;
+        height: auto;
+        background-color: white;
+        border:2px solid grey;
+        z-index:9999;
+        font-size:14px;
+        padding: 10px;
+        ">
+        <b>Legend (TaxiID):</b><br>
+    """
+    for tid in selected_ids:
+        color = id_colors.get(tid, 'gray')
+        legend_html += f"""<i style="background:{color};width:10px;height:10px;display:inline-block;margin-right:5px;"></i>{tid}<br>"""
+
+    legend_html += "</div>"
+    m.get_root().html.add_child(folium.Element(legend_html))
+
     folium.LayerControl().add_to(m)
     folium_static(m, width=1200, height=600)
-
-def visualize_2(processed_df): # Plotly Map
-    """Plotly map showing individual trajectories."""
-    st.subheader("Trajectories (Plotly)")
-    if processed_df is None or processed_df.empty or len(processed_df)<2: st.info("No data for Plotly map."); return
-    df_sort = processed_df.sort_values(["TaxiID", "DateTime"])
-    try:
-        fig = px.line_mapbox(df_sort, lat="Latitude", lon="Longitude", color="TaxiID",
-                             mapbox_style="open-street-map", zoom=10, height=600)
-        fig.update_layout(margin=dict(l=5,r=5,t=5,b=5), showlegend=False,
-                          mapbox_center_lat = df_sort['Latitude'].mean(),
-                          mapbox_center_lon = df_sort['Longitude'].mean())
-        st.plotly_chart(fig, use_container_width=True)
-    except Exception as e: st.error(f"Plotly map error: {e}")
 
 def visualize_heatmap(df_features):
     """Density heatmap of points."""

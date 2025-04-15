@@ -2,8 +2,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.cluster import DBSCAN
 import io
+from sklearn.cluster import DBSCAN
 from sklearn_extra.cluster import KMedoids
 from processing import *
 from tab_1 import *
@@ -213,11 +213,7 @@ else:
     with tab1: # Corresponds to "📍 Overview"
         st.subheader("🗺️ Trajectory Overview & Density")
         if not df_viz_processed.empty:
-            map_type = st.radio("Map Type", ["Folium", "Plotly"], key='rb_map_type_overview', horizontal=True)
-            if map_type == "Folium":
-                visualize_1(df_viz_processed)
-            else:
-                visualize_2(df_viz_processed)
+            visualize_1(df_viz_processed)
             st.markdown("---")
             visualize_heatmap(df_viz_processed)
         else: st.info("No trajectories to visualize.")

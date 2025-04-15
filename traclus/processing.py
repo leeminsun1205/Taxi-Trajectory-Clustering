@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-
-from math import radians, cos, sin, asin, sqrt
+from math import radians, cos, sin, asin, sqrt, atan2
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -53,11 +52,62 @@ def filter_data_by_hours(df, custom_hour_range=(0, 23)):
     """Filters DataFrame by time of day."""
     dt = df['DateTime'].dt
     start, end = custom_hour_range
-    if start == 0 and end == 23: return df.copy() # No filter needed
+    if start == 0 and end == 23: return df.copy() 
     if end == 23: return df[dt.hour >= start].copy() 
     return df[(dt.hour >= start) & (dt.hour <= end)].copy()
 
 # --- Feature Calculation & Anomaly Filtering (Cached) ---
+def vincenty_distance(lon1, lat1, lon2, lat2):
+    if np.isnan(lon1) or np.isnan(lat1) or np.isnan(lon2) or np.isnan(lat2):
+        return np.nan
+
+    a = 6378137.0  # Semi-major axis of Earth (WGS84) in meters
+    f = 1/298.257223563  # Flattening of the ellipsoid (WGS84)
+    b = (1 - f) * a  # Semi-minor axis
+
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+
+    L = lon2 - lon1
+    U1 = atan2((1 - f) * sin(lat1), cos(lat1))
+    U2 = atan2((1 - f) * sin(lat2), cos(lat2))
+    sinU1 = sin(U1)
+    cosU1 = cos(U1)
+    sinU2 = sin(U2)
+    cosU2 = cos(U2)
+
+    lambd = L
+    iterLimit = 100
+    while True:
+        sinLambda = sin(lambd)
+        cosLambda = cos(lambd)
+        sinSigma = sqrt((cosU2 * sinLambda)**2 + (cosU1 * sinU2 - sinU1 * cosU2 * cosLambda)**2)
+        if sinSigma == 0:
+            return 0.0  # Coincident points
+        cosSigma = sinU1 * sinU2 + cosU1 * cosU2 * cosLambda
+        sigma = atan2(sinSigma, cosSigma)
+        sinAlphaSq = (cosU1 * cosU2 * sinLambda / sinSigma)**2
+        cosSqAlpha = 1 - sinAlphaSq
+        if cosSqAlpha == 0:
+            cos2SigmaM = 0
+        else:
+            cos2SigmaM = cosSigma - 2 * sinU1 * sinU2 / cosSqAlpha
+        C = f / 16 * cosSqAlpha * (4 + f * (4 - 3 * cosSqAlpha))
+        lambdaPrev = lambd
+        lambd = L + (1 - C) * f * sinAlphaSq * (sigma + C * sinSigma * (cos2SigmaM + C * cosSigma * (-1 + 2 * cos2SigmaM**2)))
+        if abs(lambd - lambdaPrev) < 1e-12:
+            break
+        iterLimit -= 1
+        if iterLimit == 0:
+            return np.nan  # Formula failed to converge
+
+    uSq = cosSqAlpha * (a**2 - b**2) / b**2
+    A = 1 + uSq / 16384 * (4096 + uSq * (-768 + uSq * (320 - 175 * uSq)))
+    B = uSq / 1024 * (256 + uSq * (-128 + uSq * (74 - 47 * uSq)))
+    deltaSigma = B * sinSigma * (cos2SigmaM + B / 4 * (cosSigma * (-1 + 2 * cos2SigmaM**2) - B / 6 * cos2SigmaM * (-3 + 4 * sinSigma**2) * (-3 + 4 * cos2SigmaM**2)))
+
+    distance = b * A * (sigma - deltaSigma)
+
+    return distance
 
 def haversine(lon1, lat1, lon2, lat2):
     """Calculate distance in meters between two points using Haversine."""
@@ -81,7 +131,7 @@ def calculate_trajectory_features(_df):
     valid_prev = df['PrevLat'].notna()
     df['DistJump_m'] = np.nan
     df.loc[valid_prev, 'DistJump_m'] = df[valid_prev].apply(
-        lambda r: haversine(r['PrevLon'], r['PrevLat'], r['Longitude'], r['Latitude']), axis=1)
+        lambda r: vincenty_distance(r['PrevLon'], r['PrevLat'], r['Longitude'], r['Latitude']), axis=1)
 
     df['Speed_kmh'] = np.nan
     valid_speed = valid_prev & (df['TimeDiff_s'] > 1e-6) & df['DistJump_m'].notna()

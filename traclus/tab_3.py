@@ -15,7 +15,7 @@ def visualize_congestion(df_features, speed_thresh_kmh=10):
     st.write(f"Found **{len(congestion):,}** potential congestion points.")
     try: center = [congestion['Latitude'].mean(), congestion['Longitude'].mean()]
     except: center = [39.9, 116.4]
-    m = folium.Map(location=center, zoom_start=12, tiles="cartodbpositron")
+    m = folium.Map(location=center, zoom_start=11, tiles="cartodbpositron")
 
     # Use MarkerCluster for performance
     mc = MarkerCluster(name="Congestion Points").add_to(m)
@@ -25,5 +25,5 @@ def visualize_congestion(df_features, speed_thresh_kmh=10):
          folium.CircleMarker(location=[r['Latitude'], r['Longitude']], radius=4,
                              color='orange', fill=True, fill_color='red', fill_opacity=0.6,
                              popup=popup).add_to(mc)
-    # folium.LayerControl().add_to(m) # Optional layer control
+    folium.LayerControl().add_to(m) # Optional layer control
     folium_static(m, width=1200, height=600)

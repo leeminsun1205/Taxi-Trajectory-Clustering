@@ -70,7 +70,7 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
     bounds = {"west": lon_min - lon_pad, "east": lon_max + lon_pad,
               "south": lat_min - lat_pad, "north": lat_max + lat_pad}
 
-    base_frame_duration_ms = 150
+    base_frame_duration_ms = 300
     frame_duration = max(20, int(base_frame_duration_ms / speed_multiplier))
     transition_duration = 0
 
@@ -155,7 +155,6 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
             data=[dynamic_path, moving_marker],
             traces=[0, 4],
             layout=go.Layout(
-                # Cập nhật annotation và mapbox.center để theo dõi marker
                 annotations=[dict(
                     text=info_text,
                     align='left',
