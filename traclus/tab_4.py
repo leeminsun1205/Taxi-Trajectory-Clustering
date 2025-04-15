@@ -67,35 +67,33 @@ def TRACLUS(trajectories, partition_threshold=0.0005, eps_cluster=0.001, min_sam
     labels = clustering.fit_predict(segment_features)
     return labels, all_segments, segment_features, segment_origin
 
-# @st.cache_data(show_spinner=False) 
+@st.cache_data(show_spinner=False) 
 
 def calculate_distance_matrix(_trajectory_data, metric='dtw'):
     """Calculates pairwise distance matrix between trajectories."""
     n = len(_trajectory_data)
     if n < 2:
         return np.array([])
-    st.write(_trajectory_data)
     dist_matrix = np.full((n, n), np.inf)
     np.fill_diagonal(dist_matrix, 0)
     max_len = max(len(traj) for traj in _trajectory_data)
-    # padded_trajectories = np.array([
-    #     np.pad(traj, ((0, max_len - len(traj)), (0, 0)), mode='edge') 
-    #     for traj in _trajectory_data
-    # ])
+    padded_trajectories = np.array([
+        np.pad(traj, ((0, max_len - len(traj)), (0, 0)), mode='edge') 
+        for traj in _trajectory_data
+    ])
     try:
         if metric == 'dtw':
 
-            dist_matrix = cdist_dtw(_trajectory_data)
-            st.write(dist_matrix)
+            dist_matrix = cdist_dtw(padded_trajectories)
         else:
             for i in range(n):
                 for j in range(i + 1, n):
                     d = np.inf
                     try:
                         if metric == 'frechet':
-                            d = similaritymeasures.frechet_dist(_trajectory_data[i], _trajectory_data[j])
+                            d = similaritymeasures.frechet_dist(padded_trajectories[i], padded_trajectories[j])
                         elif metric == 'hausdorff':
-                            d = similaritymeasures.hausdorff_dist(_trajectory_data[i], _trajectory_data[j])
+                            d = similaritymeasures.hausdorff_dist(padded_trajectories[i], padded_trajectories[j])
                         dist_matrix[i, j] = dist_matrix[j, i] = d
                     except Exception:
                         dist_matrix[i, j] = dist_matrix[j, i] = np.inf
@@ -242,7 +240,8 @@ def visualize_clusters(proc_df, traj_data, labels, traj_ids, proto_indices=None)
         name = f"Cluster {lbl}" if lbl != -1 else "Noise"
         color = colors.get(lbl, '#808080')
         is_proto = (lbl != -1 and lbl_to_proto.get(lbl) == i)
-        folium_traj = np.array(traj).tolist()
+        folium_traj = [[p[1], p[0]] for p in traj]
+        # st.write(folium_traj)
         if len(folium_traj) >= 2:
             folium.PolyLine(locations=folium_traj, color=color,
                             weight=4 if is_proto else 2, opacity=1.0 if is_proto else 0.6,

@@ -200,7 +200,19 @@ else:
     st.header("📊 Data Summary")
     display_stats(len(processed_df_main), processed_df_main, traj_data_main)
     st.markdown("---")
+    taxi_ids = processed_df_main['TaxiID'].unique()
+    selected_id = st.selectbox("Select TaxiID to see detailed infomation", sorted(taxi_ids), index=0, key='sb_taxi_id')
+    info = get_taxi_info(processed_df_main, selected_id)
 
+    if info:
+        c1, c2, c3 = st.columns(3)
+        c1.write(f"**Start Time:** {info['Start Time']}")
+        c2.write(f"**End Time:** {info['End Time']}")
+        c3.write(f"**# Points:** {info['Num Points']}")
+
+        c4, c5 = st.columns(2)
+        c4.write(f"**Total Distance:** {info['Total Distance (m)']/1000:.2f} km")
+        c5.write(f"**Avg Speed (w/o 0km/h):** {info['Average Speed (km/h)']:.2f} km/h")
     df_viz_processed = processed_df_main if isinstance(processed_df_main, pd.DataFrame) else pd.DataFrame()
     
     # --- Tabs ---
@@ -316,7 +328,7 @@ else:
                             model = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samp, metric="precomputed")
                         elif sel_algo == "K-Medoids":
                             st.write("**K-Medoids Params**")
-                            max_k = max(2, num_traj_cluster - 1); k_val = st.session_state.get(kmedoids_k_key, min(3, max_k)); k_val = max(2, min(max_k, k_val))
+                            max_k = max(2, num_traj_cluster - 1); k_val = st.session_state.get(kmedoids_k_key, min(4, max_k)); k_val = max(2, min(max_k, k_val))
                             kmedoids_k = st.slider(f"Num Clusters ({sel_metric})", 2, max_k, value=k_val, key=f"sl_k_{sel_metric}_clust")
                             # methods = ['pam', 'alternate']; method_val = st.session_state.get(CACHE_KMEDOIDS_METHOD, 'pam')
                             # kmedoids_method = st.radio("Method", methods, horizontal=True, index=methods.index(method_val), key='rb_kmed_method_clust')

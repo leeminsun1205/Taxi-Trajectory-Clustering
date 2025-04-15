@@ -196,3 +196,26 @@ def display_stats(processed_len, processed_df, traj_data):
              t_min, t_max = processed_df["DateTime"].min(), processed_df["DateTime"].max()
              fmt = '%Y-%m-%d %H:%M'
              st.write(f"**Time Range:** {t_min.strftime(fmt)} to {t_max.strftime(fmt)}")
+
+def get_taxi_info(df, taxi_id):
+    """Trích xuất thông tin của một TaxiID từ DataFrame đã xử lý."""
+    df_taxi = df[df['TaxiID'] == taxi_id].copy()
+    if df_taxi.empty:
+        return None
+
+    start_time = df_taxi['DateTime'].min()
+    end_time = df_taxi['DateTime'].max()
+    n_points = len(df_taxi)
+
+    total_dist = df_taxi['DistJump_m'].sum(skipna=True)
+    avg_speed = df_taxi.loc[df_taxi['Speed_kmh'] > 0, 'Speed_kmh'].mean(skipna=True)
+
+
+    return {
+        "TaxiID": taxi_id,
+        "Start Time": start_time,
+        "End Time": end_time,
+        "Num Points": n_points,
+        "Total Distance (m)": total_dist,
+        "Average Speed (km/h)": avg_speed
+    }
