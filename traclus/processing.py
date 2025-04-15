@@ -173,19 +173,19 @@ def preprocess_data(_filtered_df):
                                .reset_index(drop=True)
 
     # Extract trajectory data ([lat, lon] arrays) and IDs
-    traj_data = processed_df.groupby('TaxiID')[['Latitude', 'Longitude']]\
+    traj_data = processed_df.groupby('TaxiID')[['Longitude', 'Latitude']]\
                             .apply(lambda x: x.values).tolist()
     traj_ids = processed_df['TaxiID'].unique().tolist() # Order matches traj_data
     return traj_data, processed_df, traj_ids
 # --- Visualization Functions ---
 
-def display_stats(raw_len, processed_df, traj_data):
+def display_stats(processed_len, processed_df, traj_data):
     """Displays key data statistics."""
     st.write(processed_df)
     n_traj = len(traj_data) if traj_data else 0
     n_proc_pts = len(processed_df) if processed_df is not None else 0
     c1, c2, c3 = st.columns(3)
-    c1.metric("Raw Points", f"{raw_len:,}" if raw_len is not None else "N/A")
+    c1.metric("Raw Points", f"{processed_len:,}" if processed_len is not None else "N/A")
     c2.metric("Valid Trajectories", f"{n_traj:,}")
     c3.metric("Points Processed", f"{n_proc_pts:,}")
 

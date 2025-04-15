@@ -8,7 +8,7 @@ import folium
 import plotly.express as px
 import matplotlib.colors
 import matplotlib.pyplot as plt
-from tslearn.metrics import dtw as tslearn_dtw
+from tslearn.metrics import cdist_dtw
 import similaritymeasures
 from streamlit_folium import folium_static
 from sklearn.metrics import silhouette_score
@@ -67,53 +67,43 @@ def TRACLUS(trajectories, partition_threshold=0.0005, eps_cluster=0.001, min_sam
     labels = clustering.fit_predict(segment_features)
     return labels, all_segments, segment_features, segment_origin
 
-# @st.cache_data(show_spinner=False)
+# @st.cache_data(show_spinner=False) 
+
 def calculate_distance_matrix(_trajectory_data, metric='dtw'):
     """Calculates pairwise distance matrix between trajectories."""
     n = len(_trajectory_data)
-    if n < 2: return np.array([])
-    dist_matrix = np.full((n, n), np.inf) # Initialize with infinity
+    if n < 2:
+        return np.array([])
+    st.write(_trajectory_data)
+    dist_matrix = np.full((n, n), np.inf)
     np.fill_diagonal(dist_matrix, 0)
+    max_len = max(len(traj) for traj in _trajectory_data)
+    # padded_trajectories = np.array([
+    #     np.pad(traj, ((0, max_len - len(traj)), (0, 0)), mode='edge') 
+    #     for traj in _trajectory_data
+    # ])
+    try:
+        if metric == 'dtw':
 
-    # Pre-convert trajectories and check validity
-    trajectories_np = []
-    valid_indices = []
-    for i, t in enumerate(_trajectory_data):
-        arr = np.array(t, dtype=np.float64)
-        if arr.ndim == 2 and arr.shape[1] == 2 and arr.shape[0] >= 1:
-            trajectories_np.append(arr)
-            valid_indices.append(i)
+            dist_matrix = cdist_dtw(_trajectory_data)
+            st.write(dist_matrix)
         else:
-            trajectories_np.append(None) # Placeholder for invalid traj
-
-    num_invalid = n - len(valid_indices)
-    if num_invalid > 0: st.warning(f"Skipping {num_invalid} invalid trajectories in distance calculation.")
-
-    # Calculate upper triangle using valid trajectories only
-    for i_idx, orig_i in enumerate(valid_indices):
-        for j_idx in range(i_idx + 1, len(valid_indices)):
-            orig_j = valid_indices[j_idx]
-            traj_i = trajectories_np[orig_i]
-            traj_j = trajectories_np[orig_j]
-            dist = np.inf
-            try:
-                if metric == 'dtw': dist = tslearn_dtw(traj_i, traj_j)
-                elif metric == 'frechet': dist = similaritymeasures.frechet_dist(traj_i, traj_j)
-                elif metric == 'hausdorff': dist = similaritymeasures.hausdorff_dist(traj_i, traj_j)
-                else: dist = np.inf # Unknown metric
-                dist = dist if np.isfinite(dist) else np.inf # Ensure finite or inf
-            except Exception: dist = np.inf # Error during calc -> inf
-            dist_matrix[orig_i, orig_j] = dist_matrix[orig_j, orig_i] = dist
-
-    # Handle infinities (replace with 1.1 * max finite or large number)
-    finite_vals = dist_matrix[np.isfinite(dist_matrix)]
-    if not np.all(np.isfinite(dist_matrix)):
-        max_finite = np.max(finite_vals) if finite_vals.size > 0 else 0
-        replace_val = max_finite * 1.1 if max_finite > 0 else 1e9
-        dist_matrix[~np.isfinite(dist_matrix)] = replace_val
-        # st.write("Replaced non-finite distances in matrix.") # Less verbose
+            for i in range(n):
+                for j in range(i + 1, n):
+                    d = np.inf
+                    try:
+                        if metric == 'frechet':
+                            d = similaritymeasures.frechet_dist(_trajectory_data[i], _trajectory_data[j])
+                        elif metric == 'hausdorff':
+                            d = similaritymeasures.hausdorff_dist(_trajectory_data[i], _trajectory_data[j])
+                        dist_matrix[i, j] = dist_matrix[j, i] = d
+                    except Exception:
+                        dist_matrix[i, j] = dist_matrix[j, i] = np.inf
+    except Exception as e:
+        return np.full((n, n), np.inf)
 
     return dist_matrix
+
 
 # --- Clustering Analysis Helpers ---
 
@@ -229,6 +219,7 @@ def visualize_clusters(proc_df, traj_data, labels, traj_ids, proto_indices=None)
         st.warning("Invalid input for cluster visualization."); return
     try: center = [proc_df['Latitude'].mean(), proc_df['Longitude'].mean()] if proc_df is not None else [39.9, 116.4]
     except: center = [39.9, 116.4]
+    st.write(f"Map center: {center}")
     m = folium.Map(location=center, zoom_start=11, tiles="cartodbpositron")
 
     u_labels = sorted([lbl for lbl in set(labels) if lbl != -1])

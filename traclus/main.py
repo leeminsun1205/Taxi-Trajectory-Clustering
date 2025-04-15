@@ -365,6 +365,7 @@ else:
                      dist_mat_disp, df_labeled_disp = st.session_state.get(STATE_DISTANCE_MATRIX), st.session_state.get(STATE_PROCESSED_DF_LABELED)
                      visualize_clusters(processed_df_main, traj_data_main, labels_disp, traj_ids_main, prototypes_disp)
                      st.markdown("---"); st.subheader("📈 Cluster Summary & Performance")
+        
                      summary_df = calculate_clustering_summary(df_labeled_disp, traj_data_main, traj_ids_main, labels_disp)
                      if not summary_df.empty: st.dataframe(summary_df)
                      else: st.info("Could not generate cluster summary.")
