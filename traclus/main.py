@@ -376,6 +376,8 @@ else:
                      labels_disp, prototypes_disp = st.session_state.get(STATE_LABELS), st.session_state.get(STATE_PROTOTYPE_INDICES)
                      dist_mat_disp, df_labeled_disp = st.session_state.get(STATE_DISTANCE_MATRIX), st.session_state.get(STATE_PROCESSED_DF_LABELED)
                      visualize_clusters(processed_df_main, traj_data_main, labels_disp, traj_ids_main, prototypes_disp)
+                     selected_id = st.selectbox("Select TaxiID to see its cluster", traj_ids_main)
+                     plot_selected_cluster(traj_data_main, traj_ids_main, labels_disp, selected_id)
                      st.markdown("---"); st.subheader("📈 Cluster Summary & Performance")
         
                      summary_df = calculate_clustering_summary(df_labeled_disp, traj_data_main, traj_ids_main, labels_disp)

@@ -15,6 +15,7 @@ from sklearn.metrics import silhouette_score
 from sklearn.manifold import MDS
 import seaborn as sns
 import random
+import plotly.graph_objects as go
 
 random.seed(42)
 np.random.seed(42)
@@ -295,3 +296,67 @@ def plot_pca_projection(dist_mat, labels, title="PCA Projection of Clusters"):
         st.pyplot(fig)
     except Exception as e:
         st.warning(f"Could not generate PCA projection: {e}")
+
+def plot_selected_cluster(traj_data, traj_ids, labels, selected_id):
+    if selected_id not in traj_ids:
+        st.warning("TaxiID không tồn tại.")
+        return
+
+    idx = traj_ids.index(selected_id)
+    selected_label = labels[idx]
+
+    fig = go.Figure()
+
+    # Vẽ các trajectory khác trong cùng 1 cụm (trừ trajectory được chọn)
+    for i, (traj, label) in enumerate(zip(traj_data, labels)):
+        if label == selected_label and traj_ids[i] != selected_id:
+            fig.add_trace(go.Scattermapbox(
+                lon=traj[:, 0], lat=traj[:, 1],
+                mode='lines',
+                line=dict(width=2, color='cyan'),
+                name=f"Taxi {traj_ids[i]}",
+                hoverinfo='skip'
+            ))
+
+    # Vẽ trajectory được chọn SAU CÙNG để nó nằm trên cùng
+    traj = traj_data[idx]
+    fig.add_trace(go.Scattermapbox(
+        lon=traj[:, 0], lat=traj[:, 1],
+        mode='lines+markers',
+        line=dict(width=4, color='red'),
+        marker=dict(size=6, color='red'),
+        name=f"Selected Taxi {selected_id}"
+    ))
+
+    # Điểm đầu - màu xanh lá
+    fig.add_trace(go.Scattermapbox(
+        lon=[traj[0, 0]], lat=[traj[0, 1]],
+        mode='markers+text',
+        marker=dict(size=10, color='green'),
+        text=["Start"], textposition="top center",
+        name="Start"
+    ))
+
+    # Điểm cuối - màu xanh dương
+    fig.add_trace(go.Scattermapbox(
+        lon=[traj[-1, 0]], lat=[traj[-1, 1]],
+        mode='markers+text',
+        marker=dict(size=10, color='blue'),
+        text=["End"], textposition="bottom center",
+        name="End"
+    ))
+
+    # Căn giữa bản đồ theo trajectory được chọn
+    center_lat = traj[0, 1]
+    center_lon = traj[0, 0]
+
+    fig.update_layout(
+        mapbox_style="open-street-map",
+        mapbox_zoom=12,
+        mapbox_center={"lat": center_lat, "lon": center_lon},
+        margin={"r":0,"t":0,"l":0,"b":0},
+        height=600
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
