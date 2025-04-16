@@ -98,7 +98,7 @@ def vincenty_distance(lon1, lat1, lon2, lat2):
             break
         iterLimit -= 1
         if iterLimit == 0:
-            return np.nan  # Formula failed to converge
+            return np.nan  
 
     uSq = cosSqAlpha * (a**2 - b**2) / b**2
     A = 1 + uSq / 16384 * (4096 + uSq * (-768 + uSq * (320 - 175 * uSq)))
@@ -154,8 +154,6 @@ def filter_invalid_moves(_df_with_features, max_speed_kmh=150):
     num_removed = len(_df_with_features) - len(valid_df)
     if num_removed > 0: st.write(f"Filtered {num_removed} points by speed/distance.")
     return valid_df
-
-# --- Data Preprocessing for Clustering (Cached) ---
 
 # @st.cache_data
 def preprocess_data(_filtered_df):

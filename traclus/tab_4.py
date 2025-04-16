@@ -68,45 +68,33 @@ def TRACLUS(trajectories, partition_threshold=0.0005, eps_cluster=0.001, min_sam
     return labels, all_segments, segment_features, segment_origin
 
 @st.cache_data(show_spinner=False) 
-
 def calculate_distance_matrix(_trajectory_data, metric='dtw'):
-    """Calculates pairwise distance matrix between trajectories."""
+
     n = len(_trajectory_data)
     if n < 2:
         return np.array([])
-    dist_matrix = np.full((n, n), np.inf)
-    np.fill_diagonal(dist_matrix, 0)
+    
+    dist_matrix = np.zeros((n, n))
     max_len = max(len(traj) for traj in _trajectory_data)
     padded_trajectories = np.array([
         np.pad(traj, ((0, max_len - len(traj)), (0, 0)), mode='edge') 
         for traj in _trajectory_data
     ])
-    try:
-        if metric == 'dtw':
 
-            dist_matrix = cdist_dtw(padded_trajectories)
-        else:
-            for i in range(n):
-                for j in range(i + 1, n):
-                    d = np.inf
-                    try:
-                        if metric == 'frechet':
-                            d = similaritymeasures.frechet_dist(padded_trajectories[i], padded_trajectories[j])
-                        elif metric == 'hausdorff':
-                            d = similaritymeasures.hausdorff_dist(padded_trajectories[i], padded_trajectories[j])
-                        dist_matrix[i, j] = dist_matrix[j, i] = d
-                    except Exception:
-                        dist_matrix[i, j] = dist_matrix[j, i] = np.inf
-    except Exception as e:
-        return np.full((n, n), np.inf)
+    if metric == 'dtw':
+        dist_matrix = cdist_dtw(padded_trajectories)
+    elif metric == 'frechet':
+        for i in range(n - 1):
+            p = padded_trajectories[i]
+            for j in range(i + 1, n):
+                q = padded_trajectories[j]
+                dist_matrix[i, j] = similaritymeasures.frechet_dist(p, q)
+                dist_matrix[j, i] = dist_matrix[i, j]              
 
     return dist_matrix
 
-
-# --- Clustering Analysis Helpers ---
-
-# @st.cache_data # Caching might be okay if inputs rarely change for same data
-def find_dbscan_prototypes(_traj_data, _labels, _dist_matrix):
+# @st.cache_data 
+def find_dbscan_prototypes(_labels, _dist_matrix):
     """Finds representative trajectory index for each DBSCAN cluster."""
     prototypes = {}
     unique_labels = sorted([lbl for lbl in set(_labels) if lbl != -1])
@@ -119,26 +107,51 @@ def find_dbscan_prototypes(_traj_data, _labels, _dist_matrix):
 
         try:
             cluster_dist_submatrix = _dist_matrix[np.ix_(cluster_indices, cluster_indices)]
-            if not np.all(np.isfinite(cluster_dist_submatrix)): continue # Skip if internal distances invalid
+            if not np.all(np.isfinite(cluster_dist_submatrix)): continue
             sum_dists = cluster_dist_submatrix.sum(axis=1)
-            # Find index within the *submatrix* with min sum
             min_sum_sub_idx = np.argmin(sum_dists)
-            # Map back to original index
             prototypes[label] = cluster_indices[min_sum_sub_idx]
-        except Exception: pass # Ignore errors finding prototype for a cluster
+        except Exception: pass 
     return prototypes
 
 def calculate_silhouette(dist_matrix, labels):
-    """Calculates silhouette score, returns None if invalid."""
-    if labels is None or dist_matrix is None or dist_matrix.size == 0: return None
+
     n_labels = len(set(labels))
     n_samples = len(labels)
-    # Score defined for 2 <= k <= n-1 clusters
+
     if 2 <= n_labels < n_samples:
         if dist_matrix.shape == (n_samples, n_samples) and np.all(np.isfinite(dist_matrix)):
-            try: return silhouette_score(dist_matrix, labels, metric='precomputed')
-            except ValueError: return None # Handle cases like all points in one cluster
-    return None # Default return if conditions not met
+            return silhouette_score(dist_matrix, labels, metric='precomputed')
+    return None 
+
+def rdp_with_index(points, indices, epsilon):
+    """rdp with returned point indices
+    """
+    dmax, index = 0.0, 0
+    for i in range(1, len(points) - 1):
+        d = point_to_line_distance(points[i], points[0], points[-1])
+        if d > dmax:
+            dmax, index = d, i
+    if dmax >= epsilon:
+        first_points, first_indices = rdp_with_index(points[:index+1], indices[:index+1], epsilon)
+        second_points, second_indices = rdp_with_index(points[index:], indices[index:], epsilon)
+        results = first_points[:-1] + second_points
+        results_indices = first_indices[:-1] + second_indices
+    else:
+        results, results_indices = [points[0], points[-1]], [indices[0], indices[-1]]
+    return results, results_indices
+
+def simplify_trajectories(traj_data, epsilon=0.0005):
+    simplified_trajs = []
+    simplified_indices = []
+
+    for traj in traj_data:
+        indices = list(range(len(traj)))
+        simp_points, simp_indices = rdp_with_index(traj, indices, epsilon)
+        simplified_trajs.append(np.array(simp_points))
+        simplified_indices.append(simp_indices)
+    
+    return simplified_trajs, simplified_indices
 
 def calculate_clustering_summary(_processed_df_labeled, _traj_data, _traj_ids, _labels):
     """Generates summary statistics for each valid cluster, including formatted durations and speed (excluding 0)."""
@@ -241,7 +254,7 @@ def visualize_clusters(proc_df, traj_data, labels, traj_ids, proto_indices=None)
         color = colors.get(lbl, '#808080')
         is_proto = (lbl != -1 and lbl_to_proto.get(lbl) == i)
         folium_traj = [[p[1], p[0]] for p in traj]
-        # st.write(folium_traj)
+
         if len(folium_traj) >= 2:
             folium.PolyLine(locations=folium_traj, color=color,
                             weight=4 if is_proto else 2, opacity=1.0 if is_proto else 0.6,
@@ -276,8 +289,8 @@ def plot_pca_projection(dist_mat, labels, title="PCA Projection of Clusters"):
         fig, ax = plt.subplots()
         sns.scatterplot(x=coords[:, 0], y=coords[:, 1], hue=labels, palette="tab10", ax=ax)
         ax.set_title(title)
-        ax.set_xlabel("Component 1")
-        ax.set_ylabel("Component 2")
+        # ax.set_xlabel("Component 1")
+        # ax.set_ylabel("Component 2")
         ax.legend(title="Cluster", bbox_to_anchor=(1.05, 1), loc='upper left')
         st.pyplot(fig)
     except Exception as e:

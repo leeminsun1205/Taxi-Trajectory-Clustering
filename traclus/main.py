@@ -54,7 +54,7 @@ default_values = {
     STATE_TRAJECTORY_DATA: None, STATE_TRAJECTORY_IDS: None, STATE_DISTANCE_MATRIX: None,
     STATE_LABELS: None, STATE_RAN_CLUSTERING: False, STATE_SELECTED_METRIC: 'dtw',
     STATE_LAST_METRIC_RUN: None, STATE_PROCESSED_DF_LABELED: None, STATE_PROTOTYPE_INDICES: None,
-    STATE_SELECTED_ALGO: 'DBSCAN', STATE_TRIGGER_PROCESSING: False, STATE_SELECTED_ANIM_ID: None,
+    STATE_SELECTED_ALGO: 'K-Medoids', STATE_TRIGGER_PROCESSING: False, STATE_SELECTED_ANIM_ID: None,
     'active_tab': '📍 Overview', 
 
     CACHE_SELECTED_DATES: [], CACHE_HOUR_RANGE: (0, 23),
@@ -305,7 +305,7 @@ else:
                         metrics = ['dtw', 'frechet']
                         sel_metric = st.selectbox("Distance Metric", metrics, index=metrics.index(st.session_state.get(STATE_SELECTED_METRIC, 'dtw')), key='sb_metric_clust')
                         algos = ["DBSCAN", "K-Medoids"]
-                        sel_algo = st.selectbox("Algorithm", algos, index=algos.index(st.session_state.get(STATE_SELECTED_ALGO, 'DBSCAN')), key='sb_algo_clust')
+                        sel_algo = st.selectbox("Algorithm", algos, index=algos.index(st.session_state.get(STATE_SELECTED_ALGO, 'K-Medoids')), key='sb_algo_clust')
 
                     model = None
                     dbscan_eps_key = f'{CACHE_DBSCAN_EPS_PREFIX}{sel_metric}'
@@ -330,8 +330,6 @@ else:
                             st.write("**K-Medoids Params**")
                             max_k = max(2, num_traj_cluster - 1); k_val = st.session_state.get(kmedoids_k_key, min(4, max_k)); k_val = max(2, min(max_k, k_val))
                             kmedoids_k = st.slider(f"Num Clusters ({sel_metric})", 2, max_k, value=k_val, key=f"sl_k_{sel_metric}_clust")
-                            # methods = ['pam', 'alternate']; method_val = st.session_state.get(CACHE_KMEDOIDS_METHOD, 'pam')
-                            # kmedoids_method = st.radio("Method", methods, horizontal=True, index=methods.index(method_val), key='rb_kmed_method_clust')
                             model = KMedoids(n_clusters=kmedoids_k, metric="precomputed", random_state=42)
 
                 st.session_state[STATE_SELECTED_METRIC] = sel_metric
@@ -346,7 +344,9 @@ else:
                         if dist_mat_current is None or last_metric_run != metric_run:
                              if num_traj_cluster >= 2:
                                  with st.spinner(f'Calculating {metric_run.upper()} matrix...'):
-                                    dist_mat_new = calculate_distance_matrix(traj_data_main, metric=metric_run)
+                                    traj_data_rdp, tra_data_rdp_inx = simplify_trajectories(traj_data_main, epsilon=0.00006)
+                                    # dist_mat_new = calculate_distance_matrix(traj_data_main, metric=metric_run)
+                                    dist_mat_new = calculate_distance_matrix(traj_data_rdp, metric=metric_run)
                                     st.session_state[STATE_DISTANCE_MATRIX], st.session_state[STATE_LAST_METRIC_RUN] = dist_mat_new, metric_run
                              else: st.session_state[STATE_DISTANCE_MATRIX] = np.array([])
                         else: st.info(f"Using existing distance matrix for {metric_run.upper()}.")
@@ -358,7 +358,7 @@ else:
                                     st.session_state[STATE_LABELS], st.session_state[STATE_RAN_CLUSTERING] = labels_pred, True
                                     prototypes = {}
                                     if sel_algo == "K-Medoids": prototypes = {labels_pred[i]: i for i in model.medoid_indices_}
-                                    elif sel_algo == "DBSCAN": prototypes = find_dbscan_prototypes(traj_data_main, labels_pred, dist_mat_final)
+                                    elif sel_algo == "DBSCAN": prototypes = find_dbscan_prototypes(labels_pred, dist_mat_final)
                                     st.session_state[STATE_PROTOTYPE_INDICES] = prototypes
                                     if processed_df_main is not None and traj_ids_main is not None and labels_pred is not None and len(traj_ids_main) == len(labels_pred):
                                          id_label_map = dict(zip(traj_ids_main, labels_pred)); df_labeled = processed_df_main.copy()
@@ -391,7 +391,7 @@ else:
                      with c2r: plot_cluster_sizes(labels_disp)
                 else: st.info("Run clustering to see results.")
         else: st.info("No data available for clustering.")
-                # --- Show clustering results ---
+        # --- Show clustering results ---
         if st.session_state.get(STATE_LABELS) is not None:
             st.subheader("📥 Download Clustered Data")
 
@@ -399,11 +399,9 @@ else:
                 'TaxiID': st.session_state[STATE_TRAJECTORY_IDS],
                 'Cluster': st.session_state[STATE_LABELS]
             })
-            
-            # Hiển thị dataframe cho xem thử
+
             st.dataframe(df_with_labels, use_container_width=True)
 
-            # Tạo CSV và nút tải về
             csv_buffer = io.StringIO()
             df_with_labels.to_csv(csv_buffer, index=False)
             st.download_button(
