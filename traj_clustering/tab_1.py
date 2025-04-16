@@ -1,15 +1,12 @@
-import streamlit as st
-import pandas as pd
 import folium
-from folium.plugins import HeatMap
-import plotly.express as px
+import pandas as pd
+import streamlit as st
 import matplotlib.colors
 import matplotlib.pyplot as plt
-
+from folium.plugins import HeatMap
 from streamlit_folium import folium_static
 
-def visualize_1(df_features):
-    """Folium map showing selected trajectories with optional Beijing border."""
+def visualize_trajectories_on_map(df_features):
     st.subheader("Trajectories")
 
     if df_features is None or df_features.empty:
@@ -65,7 +62,6 @@ def visualize_1(df_features):
             folium.PolyLine(route, color=id_colors.get(tid, 'gray'),
                             weight=2, opacity=0.7, popup=popup).add_to(m)
 
-    # Thêm chú giải màu sắc (legend)
     legend_html = """
     <div style="
         position: fixed;
@@ -92,7 +88,6 @@ def visualize_1(df_features):
     folium_static(m, width=1200, height=600)
 
 def visualize_heatmap(df_features):
-    """Density heatmap of points."""
     st.subheader("Density Heatmap")
     if df_features is None or df_features.empty: st.info("No data for heatmap."); return
     heat_data = df_features[['Latitude', 'Longitude']].dropna().values.tolist()

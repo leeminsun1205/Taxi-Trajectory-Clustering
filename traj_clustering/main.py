@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import io
 from sklearn.cluster import DBSCAN
+from sklearn.cluster import AgglomerativeClustering
 from sklearn_extra.cluster import KMedoids
 from processing import *
 from tab_1 import *
@@ -14,11 +15,12 @@ import random
 
 random.seed(42)
 np.random.seed(42)
+
 # --- Page Config ---
 st.set_page_config(layout="wide", page_title="Trajectory Analysis", initial_sidebar_state="expanded")
 st.title("🚀 Trajectory Analysis")
 
-# --- Constants for Session State Keys ---
+# --- Session State Keys ---
 STATE_FILE_ID = 'file_identifier'
 STATE_RAW_DF = 'raw_df'
 STATE_AVAILABLE_DATES = 'available_dates'
@@ -36,8 +38,7 @@ STATE_PROTOTYPE_INDICES = 'prototype_indices'
 STATE_SELECTED_ALGO = 'selected_algo'
 STATE_TRIGGER_PROCESSING = 'trigger_processing'
 STATE_SELECTED_ANIM_ID = 'selected_anim_id' 
-
-# Filter Cache Keys
+# --- Cache Keys ---
 CACHE_SELECTED_DATES = 'selected_dates_cache'
 CACHE_HOUR_RANGE = 'hour_range_cache'
 CACHE_APPLY_ANOMALY = 'apply_anomaly_cache'
@@ -91,7 +92,6 @@ def reset_processed_data_state():
      for key in keys_to_reset:
         st.session_state[key] = default_values.get(key)
      reset_downstream_clustering_state()
-
 
 # --- Sidebar ---
 with st.sidebar:
@@ -222,26 +222,23 @@ else:
     # --- Tab Content Containers ---
     tab1, tab2, tab3, tab4 = selected_tab_label_tuple
 
-    with tab1: # Corresponds to "📍 Overview"
+    with tab1: # "📍 Overview"
         st.subheader("🗺️ Trajectory Overview & Density")
         if not df_viz_processed.empty:
-            visualize_1(df_viz_processed)
+            visualize_trajectories_on_map(df_viz_processed)
             st.markdown("---")
             visualize_heatmap(df_viz_processed)
         else: st.info("No trajectories to visualize.")
 
-    with tab2: # Corresponds to "🚗 Animation"
+    with tab2: # "🚗 Animation"
         st.subheader("🚗 Single Taxi Animation")
         if not df_viz_processed.empty:
-            # Use the full dataframe with features for ID selection and filtering
             available_ids_anim = sorted(df_viz_processed['TaxiID'].unique())
 
             if available_ids_anim:
-                # Function to update selected ID in state
                 def update_selected_anim_id():
                     st.session_state[STATE_SELECTED_ANIM_ID] = st.session_state.sb_anim_id_widget
 
-                # Get default ID: use state if exists and valid, else first ID
                 default_anim_id = st.session_state.get(STATE_SELECTED_ANIM_ID)
                 if default_anim_id not in available_ids_anim:
                     default_anim_id = available_ids_anim[0]
@@ -251,8 +248,8 @@ else:
                     "Select TaxiID",
                     available_ids_anim,
                     index=available_ids_anim.index(default_anim_id),
-                    key="sb_anim_id_widget", # Widget key
-                    on_change=update_selected_anim_id # Callback to update state
+                    key="sb_anim_id_widget", 
+                    on_change=update_selected_anim_id 
                 )
 
                 df_taxi_anim = df_viz_processed[df_viz_processed['TaxiID'] == sel_id_anim].copy()
@@ -267,13 +264,10 @@ else:
                         min_dur = st.slider("Min Stop Duration (s)", 300, 750, 300, 30, key='sl_stop_dur')
                         st.caption(f" {min_dur // 60} minutes {min_dur % 60} seconds")
                     # --- Data Prep & Visualization ---
-                    # Detect stops (cached based on df_taxi_anim)
                     df_stops = detect_stops(df_taxi_anim, speed_thresh, min_dur)
 
-                    # Generate the Plotly figure
                     fig_anim = visualize_single_trajectory_animation_plotly(df_stops, speed_multiplier=speed_multiplier)
 
-                    # Display with a dynamic key based on the selected ID
                     if fig_anim:
                         st.plotly_chart(fig_anim, use_container_width=True, key=f"anim_plot_{sel_id_anim}")
                     else:
@@ -283,14 +277,14 @@ else:
             else: st.info("No unique Taxi IDs found in the filtered data.")
         else: st.info("No data with features available for animation (Apply filters first).")
 
-    with tab3: # Corresponds to "🚦 Congestion"
+    with tab3: # "🚦 Congestion"
         st.subheader("🚦 Congestion Hotspots")
         if not df_viz_processed.empty:
             cong_speed = st.slider("Max Speed for Congestion (km/h)", 5, 40, 10, key='sl_cong_spd_tab3')
             visualize_congestion(df_viz_processed, cong_speed)
         else: st.info("No data with features available for congestion analysis.")
 
-    with tab4: # Corresponds to "🧩 Clustering"
+    with tab4: # "🧩 Clustering"
         st.subheader("🧩 Trajectory Clustering")
         num_traj_cluster = len(traj_data_main) if traj_data_main else 0
 
@@ -317,15 +311,26 @@ else:
                             min_eps, max_eps, def_eps = 0.01, 10.0, 1.0
                             dist_mat = st.session_state.get(STATE_DISTANCE_MATRIX); last_metric = st.session_state.get(STATE_LAST_METRIC_RUN)
                             if dist_mat is not None and last_metric == sel_metric and dist_mat.size > 10:
-                                nz = dist_mat[dist_mat > 1e-9];
+                                nz = dist_mat[dist_mat > 1e-9]
                                 if nz.size > 10:
                                     try: min_eps, def_eps, max_eps = max(0.01, round(np.percentile(nz, 1), 2)), max(min_eps, round(np.percentile(nz, 10), 2)), max(def_eps * 1.5, round(np.percentile(nz, 90), 2) * 1.2)
                                     except: pass
-                            eps_val = st.session_state.get(dbscan_eps_key, def_eps); eps_val = max(min_eps, min(max_eps, eps_val))
-                            dbscan_eps = st.slider(f"Epsilon ({sel_metric})", min_eps, max_eps, value=eps_val, step=max(0.01, (max_eps-min_eps)/100), key=f'sl_eps_{sel_metric}_clust')
-                            min_samp_val = st.session_state.get(CACHE_DBSCAN_MIN_SAMPLES, 3)
+                            eps_val = st.session_state.get(dbscan_eps_key, def_eps)
+                            eps_val = max(min_eps, min(max_eps, eps_val))
+                            st.write(min_eps)
+                            dbscan_eps = st.number_input(
+                                f"Epsilon ({sel_metric})", 
+                                min_value=min_eps, 
+                                max_value=max_eps, 
+                                value=eps_val, 
+                                step=0.1, 
+                                format="%.2f", 
+                                key=f'num_eps_{sel_metric}_clust'
+                            )
+                            min_samp_val = st.session_state.get(CACHE_DBSCAN_MIN_SAMPLES, 2)
                             dbscan_min_samp = st.slider("Min Samples", 1, max(2, num_traj_cluster // 10 + 1), value=min_samp_val, key='sl_min_samp_clust')
                             model = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samp, metric="precomputed")
+
                         elif sel_algo == "K-Medoids":
                             st.write("**K-Medoids Params**")
                             max_k = max(2, num_traj_cluster - 1); k_val = st.session_state.get(kmedoids_k_key, min(4, max_k)); k_val = max(2, min(max_k, k_val))
@@ -337,20 +342,78 @@ else:
                 if sel_algo == "DBSCAN": st.session_state[dbscan_eps_key], st.session_state[CACHE_DBSCAN_MIN_SAMPLES] = dbscan_eps, dbscan_min_samp
                 elif sel_algo == "K-Medoids": st.session_state[kmedoids_k_key] = kmedoids_k
 
+                st.markdown("### Distance Matrix Configuration")
+
+                use_matrix_weights = st.checkbox(
+                    "Use matrix weights (chỉ áp dụng cho dữ liệu đầy đủ)", 
+                    key="use_matrix_weights"
+                )
+
+                matrix_option = None
+                if use_matrix_weights:
+                    matrix_option = st.selectbox(
+                        "Chọn loại ma trận khoảng cách",
+                        [
+                            "Beijing - DTW",
+                            "Rome - DTW",
+                            "Beijing - Frechet",
+                            "Rome - Frechet"
+                        ],
+                        key="matrix_option"
+                    )
+
+                # --------------------------
+                # NÚT RUN
+                # --------------------------
                 if st.button(f"▶️ Run {sel_algo} ({sel_metric.upper()})", key='btn_run_cluster_tab4', type="primary", use_container_width=True):
                     if model is not None:
-                        reset_downstream_clustering_state(); metric_run = sel_metric
-                        dist_mat_current = st.session_state.get(STATE_DISTANCE_MATRIX); last_metric_run = st.session_state.get(STATE_LAST_METRIC_RUN)
+                        reset_downstream_clustering_state()
+                        metric_run = sel_metric
+                        dist_mat_current = st.session_state.get(STATE_DISTANCE_MATRIX)
+                        last_metric_run = st.session_state.get(STATE_LAST_METRIC_RUN)
+
                         if dist_mat_current is None or last_metric_run != metric_run:
-                             if num_traj_cluster >= 2:
-                                 with st.spinner(f'Calculating {metric_run.upper()} matrix...'):
+                            if num_traj_cluster >= 2:
+                                with st.spinner(f'Calculating {metric_run.upper()} matrix...'):
+                                    # Giả sử đơn giản hóa trajectory của dữ liệu ban đầu
                                     traj_data_rdp, tra_data_rdp_inx = simplify_trajectories(traj_data_main, epsilon=0.00006)
-                                    # dist_mat_new = calculate_distance_matrix(traj_data_main, metric=metric_run)
-                                    dist_mat_new = calculate_distance_matrix(traj_data_rdp, metric=metric_run)
-                                    st.session_state[STATE_DISTANCE_MATRIX], st.session_state[STATE_LAST_METRIC_RUN] = dist_mat_new, metric_run
-                             else: st.session_state[STATE_DISTANCE_MATRIX] = np.array([])
-                        else: st.info(f"Using existing distance matrix for {metric_run.upper()}.")
+                                    
+                                    # Khởi tạo biến cho ma trận khoảng cách mới
+                                    dist_mat_new = None
+
+                                    # Nếu người dùng chọn sử dụng matrix weights thì load file tương ứng
+                                    if use_matrix_weights and matrix_option is not None:
+                                        matrix_paths = {
+                                            "Beijing - DTW": "matrix_weights/b_dtw_dist_matrix.npy",
+                                            "Rome - DTW": "matrix_weights/r_dtw_dist_matrix.npy",
+                                            "Beijing - Frechet": "matrix_weights/b_frechet_dist_matrix.npy",
+                                            "Rome - Frechet": "matrix_weights/r_frechet_dist_matrix.npy",
+                                        }
+                                        selected_matrix_path = matrix_paths.get(matrix_option)
+
+                                        try:
+                                            dist_mat_new = np.load(selected_matrix_path)
+                                            st.success(f"Loaded distance matrix from: {selected_matrix_path}")
+                                        except Exception as e:
+                                            st.error(f"Failed to load distance matrix: {e}")
+                                    else:
+                                        # Nếu không chọn matrix weights, tính toán ma trận mới
+                                        dist_mat_new = calculate_distance_matrix(traj_data_rdp, metric=metric_run)
+                                    
+                                    # Lưu trữ kết quả vào session_state để sử dụng cho downstream
+                                    if dist_mat_new is not None:
+                                        st.session_state[STATE_DISTANCE_MATRIX] = dist_mat_new
+                                        st.session_state[STATE_LAST_METRIC_RUN] = metric_run
+                                    else:
+                                        st.error("Distance matrix is not available.")
+                            else:
+                                st.session_state[STATE_DISTANCE_MATRIX] = np.array([])
+                        else:
+                            st.info(f"Using existing distance matrix for {metric_run.upper()}.")
+                        
+                        # Sử dụng ma trận khoảng cách cuối cùng trong downstream
                         dist_mat_final = st.session_state.get(STATE_DISTANCE_MATRIX)
+
                         if dist_mat_final is not None and dist_mat_final.shape == (num_traj_cluster, num_traj_cluster):
                             with st.spinner(f"Running {sel_algo}..."):
                                 try:
@@ -367,6 +430,7 @@ else:
                                     st.success(f"{sel_algo} ({metric_run.upper()}) complete!")
                                 except Exception as e: st.error(f"Clustering failed: {e}"); reset_downstream_clustering_state()
                         else: st.error("Distance matrix invalid. Cannot cluster.")
+
                     else: st.warning("Clustering algorithm not configured.")
 
                 st.markdown("---"); st.subheader("📊 Clustering Results & Analysis")
@@ -376,13 +440,16 @@ else:
                      labels_disp, prototypes_disp = st.session_state.get(STATE_LABELS), st.session_state.get(STATE_PROTOTYPE_INDICES)
                      dist_mat_disp, df_labeled_disp = st.session_state.get(STATE_DISTANCE_MATRIX), st.session_state.get(STATE_PROCESSED_DF_LABELED)
                      visualize_clusters(processed_df_main, traj_data_main, labels_disp, traj_ids_main, prototypes_disp)
+
                      selected_id = st.selectbox("Select TaxiID to see its cluster", traj_ids_main)
                      plot_selected_cluster(traj_data_main, traj_ids_main, labels_disp, selected_id)
                      st.markdown("---"); st.subheader("📈 Cluster Summary & Performance")
         
                      summary_df = calculate_clustering_summary(df_labeled_disp, traj_data_main, traj_ids_main, labels_disp)
+
                      if not summary_df.empty: st.dataframe(summary_df)
                      else: st.info("Could not generate cluster summary.")
+
                      c1r, c2r = st.columns(2)
                      with c1r:
                          st.write("**Performance**"); sil_score = calculate_silhouette(dist_mat_disp, labels_disp)
@@ -390,7 +457,9 @@ else:
                          else: st.info("Silhouette N/A")
                          st.write("**Cluster Visualization (2D)**")
                          plot_pca_projection(dist_mat_disp, labels_disp)
+
                      with c2r: plot_cluster_sizes(labels_disp)
+
                 else: st.info("Run clustering to see results.")
         else: st.info("No data available for clustering.")
         # --- Show clustering results ---

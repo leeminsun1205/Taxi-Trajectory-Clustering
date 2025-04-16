@@ -1,8 +1,7 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
 import plotly.graph_objects as go
 
-# --- Stop Detection (Cached) ---
 def detect_stops(_df_single_taxi, speed_thresh_kmh=3.0, min_duration_s=300):
     """Detects stop segments in a single taxi trajectory."""
     if _df_single_taxi is None or _df_single_taxi.empty:
@@ -31,13 +30,14 @@ def detect_stops(_df_single_taxi, speed_thresh_kmh=3.0, min_duration_s=300):
             current_duration += time_diff
         else:
             if start_idx is not None and current_duration >= min_duration_s:
-                df.loc[df.index[start_idx:i], 'IsStop'] = True  # Gắn nhãn cả chuỗi
+                df.loc[df.index[start_idx:i], 'IsStop'] = True  
             start_idx, current_duration = None, 0.0
 
     if start_idx is not None and current_duration >= min_duration_s:
         df.loc[df.index[start_idx:], 'IsStop'] = True
 
     return df
+
 
 def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, speed_multiplier=1.0):
     if df_single_taxi_with_stops is None or df_single_taxi_with_stops.empty:
@@ -59,7 +59,6 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
 
     df_anim['Speed_kmh_display'] = df_anim['Speed_kmh'].fillna(0.0)
 
-    # Sử dụng tọa độ điểm xuất phát làm trung tâm ban đầu
     start_lat = df_anim["Latitude"].iloc[0]
     start_lon = df_anim["Longitude"].iloc[0]
 
@@ -76,7 +75,6 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
 
     fig = go.Figure()
 
-    # Trace 0: Đoạn đường di chuyển (dynamic)
     fig.add_trace(go.Scattermapbox(
         lat=[start_lat],
         lon=[start_lon],
@@ -85,7 +83,7 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
         marker=dict(size=4, color='rgba(255, 0, 0, 0.7)'),
         name="Trajectory"
     ))
-    # Trace 1: Marker cho các điểm dừng (static)
+
     stops_df = df_anim[df_anim['IsStop']]
     fig.add_trace(go.Scattermapbox(
         lat=stops_df["Latitude"],
@@ -96,7 +94,7 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
         hoverinfo='text',
         text=[f"Stop @ {dt.strftime('%H:%M:%S')}" for dt in stops_df['DateTime']]
     ))
-    # Trace 2: Marker cho điểm Start (static)
+
     fig.add_trace(go.Scattermapbox(
         lat=[start_lat],
         lon=[start_lon],
@@ -106,7 +104,7 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
         hoverinfo='text',
         text=f"Start: {df_anim['DateTime'].iloc[0].strftime('%H:%M:%S')}"
     ))
-    # Trace 3: Marker cho điểm End (static) – chuyển sang màu xanh dương
+
     fig.add_trace(go.Scattermapbox(
         lat=[df_anim["Latitude"].iloc[-1]],
         lon=[df_anim["Longitude"].iloc[-1]],
@@ -116,7 +114,7 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
         hoverinfo='text',
         text=f"End: {df_anim['DateTime'].iloc[-1].strftime('%H:%M:%S')}"
     ))
-    # Trace 4: Marker di chuyển (dynamic)
+
     fig.add_trace(go.Scattermapbox(
         lat=[start_lat],
         lon=[start_lon],
@@ -130,7 +128,7 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
     frames = []
     for k in range(len(df_anim)):
         row = df_anim.iloc[k]
-        # Đoạn đường tạm tính từ điểm đầu đến frame hiện tại
+
         dynamic_path = go.Scattermapbox(
             lat=df_anim["Latitude"].iloc[:k+1].tolist(),
             lon=df_anim["Longitude"].iloc[:k+1].tolist(),
@@ -139,7 +137,7 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
             marker=dict(size=4, color='rgba(255, 0, 0, 0.7)'),
             name="Trajectory"
         )
-        # Marker di chuyển tại điểm hiện tại
+
         moving_marker = go.Scattermapbox(
             lat=[row["Latitude"]],
             lon=[row["Longitude"]],
@@ -175,12 +173,12 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
         height=700,
         mapbox_style="carto-positron",
         mapbox_bounds=bounds,
-        # Ban đầu căn giữa ở điểm xuất phát
+
         mapbox_center=dict(lat=start_lat, lon=start_lon),
         mapbox_zoom=12,
         margin=dict(r=5, t=10, l=5, b=5),
         showlegend=True,
-        # Đặt legend trở về vị trí ban đầu (góc dưới trái) để không đè lên annotation tốc độ
+
         legend=dict(yanchor="bottom", y=0.01, xanchor="left", x=0.01,
                     bgcolor='rgba(255,255,255,0.7)'),
         annotations=[dict(
@@ -198,7 +196,7 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
             type="buttons",
             direction="right",
             showactive=False,
-            # Nút Play/Pause được đặt cao hơn slider
+
             x=0.95,
             y=0.12,
             xanchor="right",

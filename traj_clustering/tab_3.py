@@ -1,5 +1,5 @@
-import streamlit as st
 import folium
+import streamlit as st
 from folium.plugins import MarkerCluster
 from streamlit_folium import folium_static
 
@@ -17,7 +17,6 @@ def visualize_congestion(df_features, speed_thresh_kmh=10):
     except: center = [39.9, 116.4]
     m = folium.Map(location=center, zoom_start=11, tiles="cartodbpositron")
 
-    # Use MarkerCluster for performance
     mc = MarkerCluster(name="Congestion Points").add_to(m)
     for idx, r in congestion.iterrows():
          popup = (f"Time: {r['DateTime'].strftime('%H:%M:%S')}<br>"
@@ -25,5 +24,5 @@ def visualize_congestion(df_features, speed_thresh_kmh=10):
          folium.CircleMarker(location=[r['Latitude'], r['Longitude']], radius=4,
                              color='orange', fill=True, fill_color='red', fill_opacity=0.6,
                              popup=popup).add_to(mc)
-    folium.LayerControl().add_to(m) # Optional layer control
+    folium.LayerControl().add_to(m) 
     folium_static(m, width=1200, height=600)

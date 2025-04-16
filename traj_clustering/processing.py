@@ -1,11 +1,9 @@
-import streamlit as st
-import pandas as pd
 import numpy as np
+import pandas as pd
+import streamlit as st
 from math import radians, cos, sin, asin, sqrt, atan2
 
 EARTH_RADIUS_KM = 6371.0
-
-# --- Data Loading & Initial Cleaning ---
 
 def upload_data(uploaded_file_content):
     try:
@@ -38,8 +36,7 @@ def upload_data(uploaded_file_content):
     st.success(f"Loaded {len(df)} data points.")
     return df
 
-# --- Filtering Functions (Not Cached - Rerun on filter changes) ---
-# @st.cache_data
+
 def filter_data_by_date(df, selected_dates, len_sad):
     """Filters DataFrame by selected list of dates."""
     if len(selected_dates) == len_sad: 
@@ -47,7 +44,7 @@ def filter_data_by_date(df, selected_dates, len_sad):
     dates_to_filter = [pd.Timestamp(d).date() for d in selected_dates]
     return df[df['DateTime'].dt.date.isin(dates_to_filter)].copy()
 
-# @st.cache_data
+
 def filter_data_by_hours(df, custom_hour_range=(0, 23)):
     """Filters DataFrame by time of day."""
     dt = df['DateTime'].dt
@@ -56,7 +53,7 @@ def filter_data_by_hours(df, custom_hour_range=(0, 23)):
     if end == 23: return df[dt.hour >= start].copy() 
     return df[(dt.hour >= start) & (dt.hour <= end)].copy()
 
-# --- Feature Calculation & Anomaly Filtering (Cached) ---
+
 def vincenty_distance(lon1, lat1, lon2, lat2):
     if np.isnan(lon1) or np.isnan(lat1) or np.isnan(lon2) or np.isnan(lat2):
         return np.nan
@@ -109,6 +106,7 @@ def vincenty_distance(lon1, lat1, lon2, lat2):
 
     return distance
 
+
 def haversine(lon1, lat1, lon2, lat2):
     """Calculate distance in meters between two points using Haversine."""
     if pd.isna(lon1) or pd.isna(lat1) or pd.isna(lon2) or pd.isna(lat2): return np.nan
@@ -118,7 +116,7 @@ def haversine(lon1, lat1, lon2, lat2):
     c = 2 * asin(sqrt(a))
     return c * EARTH_RADIUS_KM * 1000
 
-# @st.cache_data
+
 def calculate_trajectory_features(_df):
     """Adds TimeDiff_s, DistJump_m, Speed_kmh to the DataFrame."""
     df = _df.sort_values(['TaxiID', 'DateTime']).copy()
@@ -139,9 +137,8 @@ def calculate_trajectory_features(_df):
 
     return df.drop(columns=['PrevLat', 'PrevLon'])
 
-# @st.cache_data
+
 def filter_invalid_moves(_df_with_features, max_speed_kmh=150):
-    """Filters points based on speed and distance jump thresholds."""
     if 'Speed_kmh' not in _df_with_features.columns:
         st.warning("Features missing, cannot filter invalid moves.")
         return _df_with_features.copy()
@@ -155,27 +152,20 @@ def filter_invalid_moves(_df_with_features, max_speed_kmh=150):
     if num_removed > 0: st.write(f"Filtered {num_removed} points by speed/distance.")
     return valid_df
 
-# @st.cache_data
+
 def preprocess_data(_filtered_df):
-    """
-    Filters trajectories to have >= 2 points, sorts, and extracts
-    data into list of numpy arrays and a corresponding processed DataFrame.
-    """
-    # Filter groups (trajectories) with at least 2 points
     grouped = _filtered_df.groupby('TaxiID')
     processed_df = grouped.filter(lambda x: len(x) >= 2)
 
-    # Sort within groups and reset index
     processed_df = processed_df.groupby('TaxiID', group_keys=False)\
                                .apply(lambda x: x.sort_values('DateTime'))\
                                .reset_index(drop=True)
 
-    # Extract trajectory data ([lat, lon] arrays) and IDs
     traj_data = processed_df.groupby('TaxiID')[['Longitude', 'Latitude']]\
                             .apply(lambda x: x.values).tolist()
-    traj_ids = processed_df['TaxiID'].unique().tolist() # Order matches traj_data
+    traj_ids = processed_df['TaxiID'].unique().tolist()
     return traj_data, processed_df, traj_ids
-# --- Visualization Functions ---
+
 
 def display_stats(processed_len, processed_df, traj_data):
     """Displays key data statistics."""
@@ -195,8 +185,8 @@ def display_stats(processed_len, processed_df, traj_data):
              fmt = '%Y-%m-%d %H:%M'
              st.write(f"**Time Range:** {t_min.strftime(fmt)} to {t_max.strftime(fmt)}")
 
+
 def get_taxi_info(df, taxi_id):
-    """Trích xuất thông tin của một TaxiID từ DataFrame đã xử lý."""
     df_taxi = df[df['TaxiID'] == taxi_id].copy()
     if df_taxi.empty:
         return None
@@ -207,7 +197,6 @@ def get_taxi_info(df, taxi_id):
 
     total_dist = df_taxi['DistJump_m'].sum(skipna=True)
     avg_speed = df_taxi.loc[df_taxi['Speed_kmh'] > 0, 'Speed_kmh'].mean(skipna=True)
-
 
     return {
         "TaxiID": taxi_id,
