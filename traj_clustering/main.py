@@ -298,9 +298,9 @@ else:
         df_viz_processed = processed_df_main
 
         # --- Tabs ---
-        tab_list = ["📍 Overview", "🚗 Animation", "🚦 Congestion", "🧩 Clustering"]
+        tab_list = ["📍 Overview", "🚗 Animation", "🧩 Clustering"]
         # Use st.tabs directly, it handles its own state
-        tab1, tab2, tab3, tab4 = st.tabs(tab_list)
+        tab1, tab2, tab3 = st.tabs(tab_list)
 
         with tab1: # "📍 Overview"
             st.subheader("🗺️ Trajectory Overview & Density")
@@ -363,15 +363,15 @@ else:
                 else: st.info("No unique Taxi IDs found in the filtered data.")
             else: st.info("No processed data available for animation. Apply filters or upload data.")
 
-        with tab3: # "🚦 Congestion"
-            st.subheader("🚦 Congestion Hotspots")
-            if df_viz_processed is not None and not df_viz_processed.empty:
-                # Use reasonable defaults and steps
-                cong_speed = st.slider("Max Speed for Congestion (km/h)", 5, 40, 10, step=1) # Removed key
-                visualize_congestion(df_viz_processed, cong_speed)
-            else: st.info("No processed data available for congestion analysis.")
+        # with tab3: # "🚦 Congestion"
+        #     st.subheader("🚦 Congestion Hotspots")
+        #     if df_viz_processed is not None and not df_viz_processed.empty:
+        #         # Use reasonable defaults and steps
+        #         cong_speed = st.slider("Max Speed for Congestion (km/h)", 5, 40, 10, step=1) # Removed key
+        #         visualize_congestion(df_viz_processed, cong_speed)
+        #     else: st.info("No processed data available for congestion analysis.")
 
-        with tab4: # "🧩 Clustering"
+        with tab3: # "🧩 Clustering"
             st.subheader("🧩 Trajectory Clustering")
             num_traj_cluster = len(traj_data_main) if traj_data_main else 0
 
@@ -676,7 +676,9 @@ else:
                          # Check if essential results are available
                          if labels_disp is not None and dist_mat_disp is not None and df_labeled_disp is not None:
                              # Call visualization functions (ensure these functions handle potential empty prototypes gracefully)
-                             visualize_clusters(df_labeled_disp, traj_data_main, labels_disp, traj_ids_main, prototypes_disp) # Use df_labeled_disp
+                            #  st.write(traj_data_main)
+                             cong_speed = st.slider("Max Speed for Congestion (km/h)", 5, 40, 10, step=1) # Removed key
+                             visualize_clusters_with_congestion(df_viz_processed, df_labeled_disp, traj_data_main, labels_disp, traj_ids_main, prototypes_disp, cong_speed) # Use df_labeled_disp
 
                              # Allow selecting TaxiID to see its cluster (only if there are valid IDs)
                              if traj_ids_main:

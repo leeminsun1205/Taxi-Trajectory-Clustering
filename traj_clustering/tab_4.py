@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from sklearn.manifold import MDS
 import plotly.graph_objects as go
 from tslearn.metrics import cdist_dtw
+from folium.plugins import MarkerCluster
 from streamlit_folium import folium_static
 from sklearn.metrics import silhouette_score
 
@@ -232,45 +233,148 @@ def calculate_clustering_summary(_processed_df_labeled, _traj_data, _traj_ids, _
     return summary_df
 
 
-def visualize_clusters(proc_df, traj_data, labels, traj_ids, proto_indices=None):
-    """Folium map visualizing clustered trajectories."""
-    st.subheader("Clustered Trajectories")
+# def visualize_clusters(proc_df, traj_data, labels, traj_ids, proto_indices=None):
+#     """Folium map visualizing clustered trajectories."""
+#     st.subheader("Clustered Trajectories")
+#     if not traj_data or labels is None or traj_ids is None or \
+#        len(traj_data) != len(labels) or len(traj_ids) != len(labels):
+#         st.warning("Invalid input for cluster visualization."); return
+#     try: center = [proc_df['Latitude'].mean(), proc_df['Longitude'].mean()] if proc_df is not None else [39.9, 116.4]
+#     except: center = [39.9, 116.4]
+#     st.write(f"Map center: {center}")
+#     m = folium.Map(location=center, zoom_start=10, tiles="cartodbpositron")
+
+#     u_labels = sorted([lbl for lbl in set(labels) if lbl != -1])
+#     n_clusters = len(u_labels)
+#     if n_clusters > 0:
+#         cmap = plt.cm.get_cmap('viridis', n_clusters)
+#         colors = {lbl: matplotlib.colors.rgb2hex(cmap(i / max(1, n_clusters -1))) for i, lbl in enumerate(u_labels)}
+#     else: colors = {}
+#     colors[-1] = '#808080' # Noise color
+
+#     layers = {}
+#     for lbl in u_labels + [-1]:
+#         name = f"Cluster {lbl}" if lbl != -1 else "Noise"
+#         layers[name] = folium.FeatureGroup(name=name, show=True).add_to(m)
+
+#     lbl_to_proto = {lbl: idx for lbl, idx in proto_indices.items()} if proto_indices else {}
+
+#     for i, traj in enumerate(traj_data):
+#         lbl = labels[i]; tid = traj_ids[i]
+#         name = f"Cluster {lbl}" if lbl != -1 else "Noise"
+#         color = colors.get(lbl, '#808080')
+#         is_proto = (lbl != -1 and lbl_to_proto.get(lbl) == i)
+#         folium_traj = [[p[1], p[0]] for p in traj]
+
+#         if len(folium_traj) >= 2:
+#             folium.PolyLine(locations=folium_traj, color=color,
+#                             weight=4 if is_proto else 2, opacity=1.0 if is_proto else 0.6,
+#                             popup=f"ID: {tid}<br>Cluster: {lbl}{' (Proto)' if is_proto else ''}"
+#                            ).add_to(layers[name])
+#     if layers: folium.LayerControl(collapsed=False).add_to(m)
+#     folium_static(m, width=1200, height=600)
+
+def get_map_center(df):
+    """Calculates the center coordinates from a DataFrame."""
+    if df is not None and not df.empty and 'Latitude' in df.columns and 'Longitude' in df.columns:
+        lat_mean = df['Latitude'].mean()
+        lon_mean = df['Longitude'].mean()
+        if pd.notna(lat_mean) and pd.notna(lon_mean):
+            return [lat_mean, lon_mean]
+    return [39.9, 116.4] # Default center (e.g., Beijing)
+
+def visualize_clusters_with_congestion(df_features, proc_df, traj_data, labels, traj_ids, proto_indices=None,  speed_thresh_kmh=10):
+    
+    st.subheader("Clustered Trajectories with Congestion Hotspots")
+
+    # --- Input Validation ---
+    valid_clusters = True
     if not traj_data or labels is None or traj_ids is None or \
        len(traj_data) != len(labels) or len(traj_ids) != len(labels):
-        st.warning("Invalid input for cluster visualization."); return
-    try: center = [proc_df['Latitude'].mean(), proc_df['Longitude'].mean()] if proc_df is not None else [39.9, 116.4]
-    except: center = [39.9, 116.4]
-    st.write(f"Map center: {center}")
+        st.warning("Invalid input for cluster visualization. Skipping cluster layer.")
+        valid_clusters = False
+
+    valid_congestion = True
+    if df_features is None or df_features.empty or 'Speed_kmh' not in df_features.columns or \
+       'Latitude' not in df_features.columns or 'Longitude' not in df_features.columns or \
+       'DateTime' not in df_features.columns or 'TaxiID' not in df_features.columns:
+        st.info("Insufficient data for congestion analysis. Skipping congestion layer.")
+        valid_congestion = False
+
+    if not valid_clusters and not valid_congestion:
+        st.error("No valid data provided for visualization.")
+        return
+
+    # --- Map Initialization ---
+    center = get_map_center(proc_df) if proc_df is not None else get_map_center(df_features)
+    st.write(f"Map center calculated as: {center}")
     m = folium.Map(location=center, zoom_start=10, tiles="cartodbpositron")
 
-    u_labels = sorted([lbl for lbl in set(labels) if lbl != -1])
-    n_clusters = len(u_labels)
-    if n_clusters > 0:
-        cmap = plt.cm.get_cmap('viridis', n_clusters)
-        colors = {lbl: matplotlib.colors.rgb2hex(cmap(i / max(1, n_clusters -1))) for i, lbl in enumerate(u_labels)}
-    else: colors = {}
-    colors[-1] = '#808080' # Noise color
+    # --- Cluster Visualization Layer ---
+    if valid_clusters:
+        u_labels = sorted([lbl for lbl in set(labels) if lbl != -1])
+        n_clusters = len(u_labels)
+        if n_clusters > 0:
+            try:
+                cmap = plt.cm.get_cmap('viridis', n_clusters)
+                colors = {lbl: matplotlib.colors.rgb2hex(cmap(i / max(1, n_clusters -1))) for i, lbl in enumerate(u_labels)}
+            except ValueError: # Handle cases with very few clusters if needed
+                 cmap = plt.cm.get_cmap('viridis', max(2, n_clusters)) # Avoid dividing by zero if n_clusters=1
+                 colors = {lbl: matplotlib.colors.rgb2hex(cmap(i / max(1, n_clusters -1))) for i, lbl in enumerate(u_labels)}
+        else:
+            colors = {}
+        colors[-1] = '#808080' # Noise color
 
-    layers = {}
-    for lbl in u_labels + [-1]:
-        name = f"Cluster {lbl}" if lbl != -1 else "Noise"
-        layers[name] = folium.FeatureGroup(name=name, show=True).add_to(m)
+        cluster_layers = {}
+        for lbl in u_labels + [-1]:
+            name = f"Cluster {lbl}" if lbl != -1 else "Noise Trajectories"
+            cluster_layers[name] = folium.FeatureGroup(name=name, show=True).add_to(m)
 
-    lbl_to_proto = {lbl: idx for lbl, idx in proto_indices.items()} if proto_indices else {}
+        lbl_to_proto = {lbl: idx for lbl, idx in proto_indices.items()} if proto_indices else {}
 
-    for i, traj in enumerate(traj_data):
-        lbl = labels[i]; tid = traj_ids[i]
-        name = f"Cluster {lbl}" if lbl != -1 else "Noise"
-        color = colors.get(lbl, '#808080')
-        is_proto = (lbl != -1 and lbl_to_proto.get(lbl) == i)
-        folium_traj = [[p[1], p[0]] for p in traj]
+        for i, traj in enumerate(traj_data):
+            lbl = labels[i]
+            tid = traj_ids[i]
+            name = f"Cluster {lbl}" if lbl != -1 else "Noise Trajectories"
+            color = colors.get(lbl, '#808080')
+            is_proto = (lbl != -1 and lbl_to_proto.get(lbl) == i)
 
-        if len(folium_traj) >= 2:
-            folium.PolyLine(locations=folium_traj, color=color,
-                            weight=4 if is_proto else 2, opacity=1.0 if is_proto else 0.6,
-                            popup=f"ID: {tid}<br>Cluster: {lbl}{' (Proto)' if is_proto else ''}"
-                           ).add_to(layers[name])
-    if layers: folium.LayerControl(collapsed=False).add_to(m)
+            # Ensure trajectory points are in [lat, lon] for Folium PolyLine
+            # Assuming traj points are [lon, lat] initially based on visualize_clusters code
+            folium_traj = [[p[1], p[0]] for p in traj if len(p) >= 2 and isinstance(p[0], (int, float)) and isinstance(p[1], (int, float))]
+
+            if len(folium_traj) >= 2:
+                try:
+                    folium.PolyLine(locations=folium_traj, color=color,
+                                    weight=4 if is_proto else 2, opacity=1.0 if is_proto else 0.6,
+                                    popup=f"ID: {tid}<br>Cluster: {lbl}{' (Proto)' if is_proto else ''}"
+                                   ).add_to(cluster_layers[name])
+                except Exception as e:
+                    st.warning(f"Could not draw trajectory {tid} (Cluster {lbl}): {e}")
+
+
+    # --- Congestion Visualization Layer ---
+    if valid_congestion:
+        congestion = df_features[(df_features['Speed_kmh'].notna()) & (df_features['Speed_kmh'] < speed_thresh_kmh)].copy()
+        if congestion.empty:
+            st.info(f"No congestion points found below {speed_thresh_kmh} km/h.")
+        else:
+            st.write(f"Found **{len(congestion):,}** potential congestion points (Speed < {speed_thresh_kmh} km/h).")
+
+            congestion_layer = MarkerCluster(name="Congestion Points", show=True).add_to(m)
+
+            for idx, r in congestion.iterrows():
+                if pd.notna(r['Latitude']) and pd.notna(r['Longitude']):
+                    popup_html = (f"Time: {r['DateTime'].strftime('%H:%M:%S')}<br>"
+                                  f"Speed: {r['Speed_kmh']:.1f} km/h<br>"
+                                  f"ID: {r['TaxiID']}")
+                    folium.CircleMarker(location=[r['Latitude'], r['Longitude']], radius=4,
+                                      color='orange', fill=True, fill_color='red', fill_opacity=0.6,
+                                      popup=folium.Popup(popup_html, max_width=200)
+                                     ).add_to(congestion_layer)
+
+    # --- Final Touches ---
+    folium.LayerControl(collapsed=False).add_to(m)
     folium_static(m, width=1200, height=600)
 
 
