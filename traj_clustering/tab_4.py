@@ -73,15 +73,55 @@ def find_dbscan_prototypes(_labels, _dist_matrix):
     return prototypes
 
 
+def find_agglomerative_prototypes(labels, distance_matrix):
+    
+    prototypes = {}
+    unique_labels = np.unique(labels)
+
+    for label in unique_labels:
+        if label == -1: 
+            continue
+
+        cluster_indices = np.where(labels == label)[0]
+
+        if len(cluster_indices) == 0:
+            continue
+        elif len(cluster_indices) == 1:
+            prototypes[label] = cluster_indices[0]
+        else:
+            cluster_dist_matrix = distance_matrix[np.ix_(cluster_indices, cluster_indices)]
+            sum_of_distances = np.sum(cluster_dist_matrix, axis=1)
+            prototype_local_index = np.argmin(sum_of_distances)
+            prototype_global_index = cluster_indices[prototype_local_index]
+            prototypes[label] = prototype_global_index
+
+    return prototypes
+
+
 def calculate_silhouette(dist_matrix, labels):
 
-    n_labels = len(set(labels))
-    n_samples = len(labels)
+    non_noise_mask = labels != -1
+    labels_filtered = labels[non_noise_mask]
 
-    if 2 <= n_labels < n_samples:
-        if dist_matrix.shape == (n_samples, n_samples) and np.all(np.isfinite(dist_matrix)):
-            return silhouette_score(dist_matrix, labels, metric='precomputed')
-    return None 
+    if len(labels_filtered) == 0:
+        return None
+
+    dist_matrix_filtered = dist_matrix[np.ix_(non_noise_mask, non_noise_mask)]
+    n_clusters = len(set(labels_filtered))
+    n_samples_filtered = len(labels_filtered)
+
+    if 2 <= n_clusters < n_samples_filtered:
+        if dist_matrix_filtered.shape == (n_samples_filtered, n_samples_filtered) and \
+           np.all(np.isfinite(dist_matrix_filtered)):
+            try:
+                score = silhouette_score(dist_matrix_filtered, labels_filtered, metric='precomputed')
+                return score
+            except ValueError as e:
+                return None
+        else:
+            return None
+    else:
+        return None
 
 
 def rdp_with_index(points, indices, epsilon):
@@ -201,7 +241,7 @@ def visualize_clusters(proc_df, traj_data, labels, traj_ids, proto_indices=None)
     try: center = [proc_df['Latitude'].mean(), proc_df['Longitude'].mean()] if proc_df is not None else [39.9, 116.4]
     except: center = [39.9, 116.4]
     st.write(f"Map center: {center}")
-    m = folium.Map(location=center, zoom_start=11, tiles="cartodbpositron")
+    m = folium.Map(location=center, zoom_start=10, tiles="cartodbpositron")
 
     u_labels = sorted([lbl for lbl in set(labels) if lbl != -1])
     n_clusters = len(u_labels)
@@ -317,10 +357,11 @@ def plot_selected_cluster(traj_data, traj_ids, labels, selected_id):
 
     fig.update_layout(
         mapbox_style="open-street-map",
-        mapbox_zoom=12,
+        mapbox_zoom=10,
         mapbox_center={"lat": center_lat, "lon": center_lon},
         margin={"r":0,"t":0,"l":0,"b":0},
-        height=600
+        height=600,
+        dragmode="zoom"
     )
 
     st.plotly_chart(fig, use_container_width=True)

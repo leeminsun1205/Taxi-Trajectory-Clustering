@@ -15,7 +15,7 @@ def visualize_congestion(df_features, speed_thresh_kmh=10):
     st.write(f"Found **{len(congestion):,}** potential congestion points.")
     try: center = [congestion['Latitude'].mean(), congestion['Longitude'].mean()]
     except: center = [39.9, 116.4]
-    m = folium.Map(location=center, zoom_start=11, tiles="cartodbpositron")
+    m = folium.Map(location=center, zoom_start=10, tiles="cartodbpositron")
 
     mc = MarkerCluster(name="Congestion Points").add_to(m)
     for idx, r in congestion.iterrows():

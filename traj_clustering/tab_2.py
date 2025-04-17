@@ -170,12 +170,13 @@ def visualize_single_trajectory_animation_plotly(df_single_taxi_with_stops, spee
     fig.frames = frames
 
     fig.update_layout(
-        height=700,
+        height=800,
+        width=1200,
         mapbox_style="carto-positron",
         mapbox_bounds=bounds,
 
         mapbox_center=dict(lat=start_lat, lon=start_lon),
-        mapbox_zoom=12,
+        mapbox_zoom=10,
         margin=dict(r=5, t=10, l=5, b=5),
         showlegend=True,
 

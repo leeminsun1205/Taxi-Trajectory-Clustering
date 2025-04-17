@@ -44,7 +44,7 @@ def visualize_trajectories_on_map(df_features):
     except:
         center = [39.9, 116.4]
 
-    m = folium.Map(location=center, zoom_start=11, tiles="cartodbpositron")
+    m = folium.Map(location=center, zoom_start=10, tiles="cartodbpositron")
 
     cmap = plt.cm.get_cmap('tab20', len(all_ids))
     colors = [matplotlib.colors.rgb2hex(cmap(i)) for i in range(len(all_ids))]
@@ -94,6 +94,6 @@ def visualize_heatmap(df_features):
     if not heat_data: st.warning("No valid points for heatmap."); return
     try: center = [df_features['Latitude'].mean(), df_features['Longitude'].mean()]
     except: center = [39.9, 116.4]
-    m = folium.Map(location=center, zoom_start=11, tiles="cartodbpositron")
+    m = folium.Map(location=center, zoom_start=10, tiles="cartodbpositron")
     HeatMap(heat_data, radius=10, blur=7).add_to(m)
     folium_static(m, width=1200,height=600)
