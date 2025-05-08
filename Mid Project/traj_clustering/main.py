@@ -65,7 +65,7 @@ default_values = {
     CACHE_SELECTED_DATES: [], CACHE_HOUR_RANGE: (0, 23),
     CACHE_APPLY_ANOMALY: False, CACHE_MAX_SPEED: 100,
     CACHE_DBSCAN_MIN_SAMPLES: 3, CACHE_KMEDOIDS_METHOD: 'pam',
-    CACHE_AGGLO_LINKAGE: 'ward' # Default linkage for Agglomerative
+    CACHE_AGGLO_LINKAGE: 'average' # Default linkage for Agglomerative
     # Note: Prefixed cache keys (eps, k) are handled dynamically later
 }
 for key, value in default_values.items():
@@ -429,24 +429,24 @@ else:
                                 # Try to dynamically suggest eps based on distance matrix percentile
                                 dist_mat = st.session_state.get(STATE_DISTANCE_MATRIX)
                                 last_metric = st.session_state.get(STATE_LAST_METRIC_RUN)
-                                if dist_mat is not None and last_metric == sel_metric and dist_mat.ndim == 2 and dist_mat.shape[0] > 1:
-                                    try:
-                                        # Calculate percentiles on non-zero distances only if matrix is valid
-                                        nz_dists = dist_mat[dist_mat > 1e-9] # Use a small threshold for non-zero
-                                        if nz_dists.size > 10: # Need enough points for percentiles
-                                            p1 = np.percentile(nz_dists, 1)
-                                            p10 = np.percentile(nz_dists, 10)
-                                            p90 = np.percentile(nz_dists, 90)
-                                            # Clamp suggestions within the allowed range [0.001, 5.0]
-                                            suggested_min = max(min_eps, round(p1, 3))
-                                            suggested_def = max(suggested_min, round(p10, 3))
-                                            suggested_max = min(max_eps, max(suggested_def * 1.5, round(p90, 3) * 1.2))
-                                            # Use these suggestions to refine defaults if they are valid
-                                            min_eps = suggested_min
-                                            default_eps = suggested_def
-                                            max_eps = suggested_max
-                                    except Exception:
-                                        pass # Ignore percentile errors, use fixed defaults
+                                # if dist_mat is not None and last_metric == sel_metric and dist_mat.ndim == 2 and dist_mat.shape[0] > 1:
+                                #     try:
+                                #         # Calculate percentiles on non-zero distances only if matrix is valid
+                                #         nz_dists = dist_mat[dist_mat > 1e-9] # Use a small threshold for non-zero
+                                #         if nz_dists.size > 10: # Need enough points for percentiles
+                                #             p1 = np.percentile(nz_dists, 1)
+                                #             p10 = np.percentile(nz_dists, 10)
+                                #             p90 = np.percentile(nz_dists, 90)
+                                #             # Clamp suggestions within the allowed range [0.001, 5.0]
+                                #             suggested_min = max(min_eps, round(p1, 3))
+                                #             suggested_def = max(suggested_min, round(p10, 3))
+                                #             suggested_max = min(max_eps, max(suggested_def * 1.5, round(p90, 3) * 1.2))
+                                #             # Use these suggestions to refine defaults if they are valid
+                                #             min_eps = suggested_min
+                                #             default_eps = suggested_def
+                                #             max_eps = suggested_max
+                                #     except Exception:
+                                #         pass # Ignore percentile errors, use fixed defaults
 
                                 # Get current value from state or use default, ensure it's within bounds
                                 current_eps = st.session_state.get(dbscan_eps_key, default_eps)
@@ -499,7 +499,7 @@ else:
                                 )
 
                                 # Linkage Method
-                                linkage_options = ['ward', 'complete', 'average', 'single']
+                                linkage_options = ['average', 'complete']
                                 current_linkage = st.session_state.get(CACHE_AGGLO_LINKAGE, 'ward')
                                 # Ensure 'ward' is only possible with euclidean, but we use precomputed.
                                 # Scikit-learn handles precomputed with linkage. Let's allow all.

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from math import radians, cos, sin, asin, sqrt, atan2
+from geopy.distance import geodesic
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -129,7 +130,8 @@ def calculate_trajectory_features(_df):
     valid_prev = df['PrevLat'].notna()
     df['DistJump_m'] = np.nan
     df.loc[valid_prev, 'DistJump_m'] = df[valid_prev].apply(
-        lambda r: vincenty_distance(r['PrevLon'], r['PrevLat'], r['Longitude'], r['Latitude']), axis=1)
+        # lambda r: vincenty_distance(r['PrevLon'], r['PrevLat'], r['Longitude'], r['Latitude']), axis=1)
+        lambda r: geodesic((r['PrevLat'], r['PrevLon']), (r['Latitude'], r['Longitude'])).meters, axis=1)
 
     df['Speed_kmh'] = np.nan
     valid_speed = valid_prev & (df['TimeDiff_s'] > 1e-6) & df['DistJump_m'].notna()

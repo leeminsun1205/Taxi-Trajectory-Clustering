@@ -29,7 +29,7 @@ def visualize_trajectories_on_map(df_features):
     selected_ids = st.multiselect(
         "Select Taxi IDs",
         options=all_ids,
-        default=st.session_state.selected_ids,
+        default=df_features['TaxiID'][0],
         key="selected_ids"
     )
 
