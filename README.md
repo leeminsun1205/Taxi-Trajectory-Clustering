@@ -55,8 +55,8 @@
 
 <hr>
 
-<!-- Đồ án môn học -->
-## 🎯 ĐỒ ÁN MÔN HỌC
+<!-- MID PROJECT -->
+## 🎯 MID PROJECT 
 <a name="doan"></a>
 
 ---
@@ -92,6 +92,7 @@ streamlit run traclus/main.py
 ---
 
 📌 Nếu gặp lỗi thiếu thư viện, hãy kiểm tra lại `requirements.txt` và đảm bảo mọi gói cần thiết đã được cài đặt.
+## 🎯 FINAL PROJECT  
 
 
 <hr>
