@@ -232,48 +232,6 @@ def calculate_clustering_summary(_processed_df_labeled, _traj_data, _traj_ids, _
 
     return summary_df
 
-
-# def visualize_clusters(proc_df, traj_data, labels, traj_ids, proto_indices=None):
-#     """Folium map visualizing clustered trajectories."""
-#     st.subheader("Clustered Trajectories")
-#     if not traj_data or labels is None or traj_ids is None or \
-#        len(traj_data) != len(labels) or len(traj_ids) != len(labels):
-#         st.warning("Invalid input for cluster visualization."); return
-#     try: center = [proc_df['Latitude'].mean(), proc_df['Longitude'].mean()] if proc_df is not None else [39.9, 116.4]
-#     except: center = [39.9, 116.4]
-#     st.write(f"Map center: {center}")
-#     m = folium.Map(location=center, zoom_start=10, tiles="cartodbpositron")
-
-#     u_labels = sorted([lbl for lbl in set(labels) if lbl != -1])
-#     n_clusters = len(u_labels)
-#     if n_clusters > 0:
-#         cmap = plt.cm.get_cmap('viridis', n_clusters)
-#         colors = {lbl: matplotlib.colors.rgb2hex(cmap(i / max(1, n_clusters -1))) for i, lbl in enumerate(u_labels)}
-#     else: colors = {}
-#     colors[-1] = '#808080' # Noise color
-
-#     layers = {}
-#     for lbl in u_labels + [-1]:
-#         name = f"Cluster {lbl}" if lbl != -1 else "Noise"
-#         layers[name] = folium.FeatureGroup(name=name, show=True).add_to(m)
-
-#     lbl_to_proto = {lbl: idx for lbl, idx in proto_indices.items()} if proto_indices else {}
-
-#     for i, traj in enumerate(traj_data):
-#         lbl = labels[i]; tid = traj_ids[i]
-#         name = f"Cluster {lbl}" if lbl != -1 else "Noise"
-#         color = colors.get(lbl, '#808080')
-#         is_proto = (lbl != -1 and lbl_to_proto.get(lbl) == i)
-#         folium_traj = [[p[1], p[0]] for p in traj]
-
-#         if len(folium_traj) >= 2:
-#             folium.PolyLine(locations=folium_traj, color=color,
-#                             weight=4 if is_proto else 2, opacity=1.0 if is_proto else 0.6,
-#                             popup=f"ID: {tid}<br>Cluster: {lbl}{' (Proto)' if is_proto else ''}"
-#                            ).add_to(layers[name])
-#     if layers: folium.LayerControl(collapsed=False).add_to(m)
-#     folium_static(m, width=1200, height=600)
-
 def get_map_center(df):
     """Calculates the center coordinates from a DataFrame."""
     if df is not None and not df.empty and 'Latitude' in df.columns and 'Longitude' in df.columns:

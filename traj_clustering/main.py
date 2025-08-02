@@ -22,7 +22,6 @@ st.set_page_config(layout="wide", page_title="Trajectory Analysis", initial_side
 st.title("🚀 Trajectory Analysis")
 
 # --- Session State Keys ---
-# (Keep existing keys, add new ones for Agglomerative Clustering if needed for caching)
 STATE_FILE_ID = 'file_identifier'
 STATE_RAW_DF = 'raw_df'
 STATE_AVAILABLE_DATES = 'available_dates'
@@ -48,7 +47,7 @@ CACHE_MAX_SPEED = 'max_speed_cache'
 CACHE_DBSCAN_EPS_PREFIX = 'dbscan_eps_cache_'
 CACHE_DBSCAN_MIN_SAMPLES = 'dbscan_min_samples_cache'
 CACHE_KMEDOIDS_K_PREFIX = 'kmedoids_k_cache_'
-CACHE_KMEDOIDS_METHOD = 'kmedoids_method_cache' # Note: KMedoids method parameter isn't used in clustering UI? Assume 'pam' is fixed or remove if unused.
+CACHE_KMEDOIDS_METHOD = 'kmedoids_method_cache' 
 CACHE_AGGLO_K_PREFIX = 'agglo_k_cache_' # Added
 CACHE_AGGLO_LINKAGE = 'agglo_linkage_cache' # Added
 
@@ -60,13 +59,12 @@ default_values = {
     STATE_LABELS: None, STATE_RAN_CLUSTERING: False, STATE_SELECTED_METRIC: 'dtw',
     STATE_LAST_METRIC_RUN: None, STATE_PROCESSED_DF_LABELED: None, STATE_PROTOTYPE_INDICES: None,
     STATE_SELECTED_ALGO: 'K-Medoids', STATE_TRIGGER_PROCESSING: False, STATE_SELECTED_ANIM_ID: None,
-    'active_tab': '📍 Overview', # Assuming this might be used internally by Streamlit for tabs
+    'active_tab': '📍 Overview', 
 
     CACHE_SELECTED_DATES: [], CACHE_HOUR_RANGE: (0, 23),
     CACHE_APPLY_ANOMALY: False, CACHE_MAX_SPEED: 100,
     CACHE_DBSCAN_MIN_SAMPLES: 3, CACHE_KMEDOIDS_METHOD: 'pam',
-    CACHE_AGGLO_LINKAGE: 'average' # Default linkage for Agglomerative
-    # Note: Prefixed cache keys (eps, k) are handled dynamically later
+    CACHE_AGGLO_LINKAGE: 'average' 
 }
 for key, value in default_values.items():
     if key not in st.session_state:
@@ -363,14 +361,6 @@ else:
                 else: st.info("No unique Taxi IDs found in the filtered data.")
             else: st.info("No processed data available for animation. Apply filters or upload data.")
 
-        # with tab3: # "🚦 Congestion"
-        #     st.subheader("🚦 Congestion Hotspots")
-        #     if df_viz_processed is not None and not df_viz_processed.empty:
-        #         # Use reasonable defaults and steps
-        #         cong_speed = st.slider("Max Speed for Congestion (km/h)", 5, 40, 10, step=1) # Removed key
-        #         visualize_congestion(df_viz_processed, cong_speed)
-        #     else: st.info("No processed data available for congestion analysis.")
-
         with tab3: # "🧩 Clustering"
             st.subheader("🧩 Trajectory Clustering")
             num_traj_cluster = len(traj_data_main) if traj_data_main else 0
@@ -429,24 +419,6 @@ else:
                                 # Try to dynamically suggest eps based on distance matrix percentile
                                 dist_mat = st.session_state.get(STATE_DISTANCE_MATRIX)
                                 last_metric = st.session_state.get(STATE_LAST_METRIC_RUN)
-                                # if dist_mat is not None and last_metric == sel_metric and dist_mat.ndim == 2 and dist_mat.shape[0] > 1:
-                                #     try:
-                                #         # Calculate percentiles on non-zero distances only if matrix is valid
-                                #         nz_dists = dist_mat[dist_mat > 1e-9] # Use a small threshold for non-zero
-                                #         if nz_dists.size > 10: # Need enough points for percentiles
-                                #             p1 = np.percentile(nz_dists, 1)
-                                #             p10 = np.percentile(nz_dists, 10)
-                                #             p90 = np.percentile(nz_dists, 90)
-                                #             # Clamp suggestions within the allowed range [0.001, 5.0]
-                                #             suggested_min = max(min_eps, round(p1, 3))
-                                #             suggested_def = max(suggested_min, round(p10, 3))
-                                #             suggested_max = min(max_eps, max(suggested_def * 1.5, round(p90, 3) * 1.2))
-                                #             # Use these suggestions to refine defaults if they are valid
-                                #             min_eps = suggested_min
-                                #             default_eps = suggested_def
-                                #             max_eps = suggested_max
-                                #     except Exception:
-                                #         pass # Ignore percentile errors, use fixed defaults
 
                                 # Get current value from state or use default, ensure it's within bounds
                                 current_eps = st.session_state.get(dbscan_eps_key, default_eps)
