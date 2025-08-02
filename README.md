@@ -86,7 +86,7 @@ pip install -r requirements.txt
 
 ### 5. Chạy ứng dụng
 ```bash
-streamlit run traclus/main.py
+streamlit run traj_clustering/main.py
 ```
 
 ---

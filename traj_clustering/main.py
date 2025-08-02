@@ -8,10 +8,9 @@ from sklearn.cluster import AgglomerativeClustering # Added
 from sklearn_extra.cluster import KMedoids
 # Assuming these modules contain necessary functions
 from processing import *
-from tab_1 import *
-from tab_2 import *
-from tab_3 import *
-from tab_4 import *
+from overview_tab import *
+from animation_tab import *
+from clustering_tab import *
 import random
 
 random.seed(42)
